@@ -1,0 +1,70 @@
+<!doctype>
+<html>
+<head>
+<script type='text/javascript'>
+var itt = contracts['ITT'];
+var Swap = {BUY:0, SELL:1};
+var bids = [];
+var asks = [];
+
+function update() {
+	var metrics = itt.contract.getMetrics({from:web3.eth.accounts[document.getElementById('accId').value]});
+	document.getElementById('accAddr').innerText = web3.eth.accounts[document.getElementById('accId').value];
+	document.getElementById('balance').innerText = metrics[0];
+//	document.getElementById('locked').innerText = metrics[1];
+//	document.getElementById('highestPrice').innerText = metrics[2];
+	document.getElementById('lowestAsk').innerText = metrics[3];
+	document.getElementById('highestBid').innerText = metrics[4];
+//	document.getElementById('lowestPrice').innerText = metrics[5];
+	document.getElementById('askVol').innerText = itt.contract.getVolumeAtPrice(metrics[3]);
+	document.getElementById('bidVol').innerText = itt.contract.getVolumeAtPrice(metrics[4]);
+}
+
+function getBidBook() {
+	var price = document.getElementById('highestBid').innerText;
+	while(price > 0) {
+		var ordNum = 0;
+		while (ordNum != 2^256-1) {
+			
+			
+		}
+	}	
+}
+	
+function sell() {
+	var price = document.getElementById('price').value;
+	var amount = document.getElementById('amount').value;
+	var make = document.getElementById('make').checked;
+	orderNum = itt.contract.sell(price, amount, make,
+								 {from:web3.eth.accounts[document.getElementById('accId').value]},
+								 update());
+}
+
+function buy() {
+	var price = document.getElementById('price').value;
+	var amount = document.getElementById('amount').value;
+	var make = document.getElementById('make').checked;
+	orderNum = itt.contract.buy(price, make,{from:web3.eth.accounts[document.getElementById('accId').value],
+													 value:price*amount},update());
+}
+
+</script>
+</head>
+<body bgcolor='#E6E6FA' onload='update()'>
+	<h3>Intrinsically Tradable Token</h3>
+	<button onclick='update()' type='button'>Refresh</button>
+<table>
+	<tr><td>Account ID</td><td><input id="accId" type="number" value='0' onchange='update()'></td></tr>
+	<tr><td>Account Addr</td><td id='accAddr' colspan=2></td></tr>
+	<tr><td>Balance</td><td id='balance'></td></tr>
+	<tr><td></td><td>Price</td><td>Volume</td></tr>
+	<tr><td>Ask</td><td id='lowestAsk'></td><td id="askVol"></td></tr>
+	<tr><td>Bid</td><td id='highestBid'></td><td id="bidVol"></td></tr>
+	<tr><td><button onclick='buy()' type='button'>Buy</button></td><td><button onclick='sell()' type='button'>Sell</button></td>
+	<td><input id="make" type="checkbox" checked>Make order if not filled</td></tr>
+	<tr><td>Price</td><td>Amount</td><td>Total ether</td></tr>
+	<tr><td><input id="price" type="number"></td><td><input id="amount" type="number"></td><td><input id="total" type="number"></td></tr>
+</table>
+	
+</body>
+</html>
