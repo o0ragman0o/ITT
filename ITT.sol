@@ -87,7 +87,7 @@ contract ITT {
 		ordersFIFO fifo = priceBook[_price];
 		if (fifo.numOrders == 0) throw;
 		uint256 next = fifo.head;
-		if (orders[fifo.orderIds[next]].amount > 0) return true;
+//		if (orders[fifo.orderIds[next]].amount > 0) return true;
 		while (orders[fifo.orderIds[next]].amount == 0 && next < fifo.orderIds.length) next++;
 		fifo.head = next;
 		fifo.numOrders--;
@@ -120,13 +120,13 @@ contract ITT {
 		ordersFIFO fifo = priceBook[_price];
 		if (lowestPrice == highestPrice && highestPrice == _price){
 			// no orders left;
-			lowestPrice = MAXNUM;
+			lowestPrice = 0;
 			highestPrice = 0;
 			return true;
 		}
 		if (_price == lowestPrice) {
 			lowestPrice = fifo.up;
-			priceBook[fifo.up].down = MAXNUM;
+			priceBook[fifo.up].down = 0;
 			return true;
 		}
 		if (_price == highestPrice) {
@@ -147,7 +147,7 @@ contract ITT {
 	
 	function insertFifo(uint256 _price) internal returns (bool) {
 		ordersFIFO fifo = priceBook[_price];
-		if (_price < highestPrice && _price > lowestPrice) {
+		if (_price < highestPrice && _price > lowestPrice && lowestPrice > 0) {
 			uint256 seek = highestPrice;
 			while (seek > _price) 
 				if (seek > priceBook[seek].down) seek = priceBook[seek].down;
@@ -156,10 +156,10 @@ contract ITT {
 			priceBook[fifo.down].up = _price;
 			return true;
 		}
-		if (_price < lowestPrice) {
+		if (_price < lowestPrice || lowestPrice == 0) {
 			priceBook[lowestPrice].down = _price;
 			lowestPrice = _price;
-			stitchFifo(fifo, lowestPrice, MAXNUM);
+			stitchFifo(fifo, lowestPrice, 0);
 		}
 		if (_price > highestPrice) {
 			stitchFifo(fifo, 0, highestPrice);
@@ -210,25 +210,16 @@ contract ITT {
 		return ;		
 	}
 	
-	function _make(bool _swap, uint256 _price, uint256 _amount) returns (uint256 _ordId){
-		order memory ord;
-		ord.trader = msg.sender;
-		ord.price = _price;
-		ord.amount = _amount;
-		_ordId = orders.push(ord) - 1;
-		insertOrder(_ordId);
-		return _ordId;		
-	}
-
 	function make(bool _swap, uint256 _price, uint256 _amount) returns (uint256 _ordId){
 		order ord = orders[orders.length++];
 		ord.trader = msg.sender;
 		ord.price = _price;
 		ord.amount = _amount;
-		_ordId = orders.push(ord) - 1;
+		_ordId = orders.length - 1;
 		insertOrder(_ordId);
 		return _ordId;		
 	}
+	
 	function buy (uint256 _price, bool _make) returns (uint256 _bought, uint256 _ordId) {
 		if (msg.value == 0) throw;
 		uint256 eth = msg.value;
