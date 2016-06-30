@@ -1,6 +1,8 @@
- contract LibModifiers
+contract LibModifiers
 {
 /* Modifiers */
+
+	uint constant MAXNUM = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
 	// To throw call not made by owner
 	modifier isOwner() {
@@ -92,7 +94,8 @@ contract MultiCircularLinkedList
 		returns (bool)
 //		internal
 	{
-		if (linkedLists[_listKey].nodes[HEAD].dataIndex != 0 && !_reset) return true;
+		if (linkedLists[_listKey].nodes[HEAD].dataIndex != 0 && !_reset) 
+			return false; // Already exisits.
 		linkedLists[_listKey].newNodeKey = 1; // key 1 is already head
 		linkedLists[_listKey].nodes[HEAD].next = HEAD; // set next link to head
 		linkedLists[_listKey].nodes[HEAD].prev = HEAD; // set previous link to head
@@ -365,8 +368,8 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 	function ITT() {
 		totalSupply = 1000000;
 		balances[msg.sender] = 1000000;
-		linkedLists[0].nodes[0].dataIndex = 1;
-		}
+		linkedLists[PRICE_BOOK].nodes[HEAD].dataIndex = 1;
+	}
 	
 	function () 
 		isProtected
@@ -412,9 +415,11 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 	
 	function lowestAsk() 
 		constant 
-		returns(uint)
+		returns(uint _ret)
 	{
-		return stepNext(PRICE_BOOK, HEAD);
+		_ret = stepNext(PRICE_BOOK, HEAD);
+		if (_ret == 0) _ret = MAXNUM;
+		return;
 	}
 
 /* Functions Public */
@@ -483,11 +488,11 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 //		internal
 		returns (uint _orderId)
 	{
-		Order order = orders[orders.length];
-		_orderId = orders.length++;
+		Order memory order;
 		order.trader = msg.sender;
 		order.price = _price;
 		order.amount = _amount;
+		_orderId = orders.push(order);
 		insertPrice(_price, _swap); // setup FIFO in price book
 		insertBefore(_price, HEAD, _orderId); // insert order into FIFO
 		addVolume(_price, _amount);
@@ -570,13 +575,14 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 //		internal
 		returns (uint)
 	{
-		initLinkedList(_price, NO_RESET); // in Price_book
+		if (!initLinkedList(_price, NO_RESET)) return; // in Price_book
+		linkedLists[0].newNodeKey = _price; // Price Book nodes a the actual prices
 
 		if (_swap) {
 			// Is selling
 			if (_price < lowestAsk())
 				// is lowest ask
-				return insertAfter(PRICE_BOOK, 0, _price);
+				return insertAfter(PRICE_BOOK, HEAD, _price);
 			else
 				// is higher than lowest ask 
 				return insertAfter(PRICE_BOOK, seekUp(PRICE_BOOK, lowestAsk(), _price), _price);			
@@ -584,7 +590,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 			// Is buying
 			if (_price > highestBid())
 				// is highest bid
-				return insertBefore(PRICE_BOOK, 0, _price);
+				return insertBefore(PRICE_BOOK, HEAD, _price);
 			else
 				// is lower than highest bid
 				return insertBefore(PRICE_BOOK, seekDown(PRICE_BOOK, highestBid(), _price), _price);
