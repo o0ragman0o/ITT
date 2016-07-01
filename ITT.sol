@@ -3,6 +3,8 @@ contract LibModifiers
 /* Modifiers */
 
 	uint constant MAXNUM = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+	uint constant MINNUM = 1;
+	uint constant NULL = 0;
 
 	// To throw call not made by owner
 	modifier isOwner() {
@@ -166,14 +168,14 @@ contract MultiCircularLinkedList
 		keyExists(_listKey, _nodeKey)
 		constant returns (uint)
 	{
-		return linkedLists[_listKey].nodes[_nodeKey].next;
+		return linkedLists[_listKey].nodes[_nodeKey].prev;
 	}
 
 	function stepNext(uint _listKey, uint _nodeKey)
 		keyExists(_listKey, _nodeKey)
 		constant returns (uint)
 	{
-		return linkedLists[_listKey].nodes[_nodeKey].prev;
+		return linkedLists[_listKey].nodes[_nodeKey].next;
 	}
 
 	function seekUp(uint _listKey, uint _start, uint _target)
@@ -360,8 +362,8 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 	// Orders in order of creation
 	Order[] public orders;
     // Token holder accounts
-    mapping (address => uint) balances;
-    mapping (address => uint) unavailable;
+    mapping (address => uint) public balances;
+    mapping (address => uint) public unavailable;
 
 /* Functions */
 
@@ -369,6 +371,12 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		totalSupply = 1000000;
 		balances[msg.sender] = 1000000;
 		linkedLists[PRICE_BOOK].nodes[HEAD].dataIndex = 1;
+		linkedLists[PRICE_BOOK].nodes[MINNUM].dataIndex = 1;
+		linkedLists[PRICE_BOOK].nodes[MAXNUM].dataIndex = 1;
+		linkedLists[PRICE_BOOK].nodes[HEAD].next = MAXNUM;
+		linkedLists[PRICE_BOOK].nodes[MAXNUM].prev = HEAD;
+		linkedLists[PRICE_BOOK].nodes[HEAD].prev = MINNUM;
+		linkedLists[PRICE_BOOK].nodes[MINNUM].next = HEAD;
 	}
 	
 	function () 
@@ -403,7 +411,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		constant
 		returns (uint)
 	{
-		return linkedLists[PRICE_BOOK].auxData;
+		return linkedLists[_price].auxData;
 	}
 	
 	function highestBid() 
@@ -415,12 +423,11 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 	
 	function lowestAsk() 
 		constant 
-		returns(uint _ret)
+		returns(uint)
 	{
-		_ret = stepNext(PRICE_BOOK, HEAD);
-		if (_ret == 0) _ret = MAXNUM;
-		return;
+		return stepNext(PRICE_BOOK, HEAD);
 	}
+
 
 /* Functions Public */
 
@@ -499,12 +506,20 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		return _orderId;		
 	}
 	
+	function getNextOrderId(uint _price) 
+		// internal
+		constant
+		returns (uint)
+	{
+		return linkedLists[_price].nodes[stepNext(_price,HEAD)].dataIndex;
+	}
+
 	function takeAsk(uint _ether)
 //		internal
 		returns (uint _ethRemaining)
 	{
-		Order order = orders[lowestAsk()];
-		uint amount = _ether / order.price;
+		Order order = orders[getNextOrderId(lowestAsk())];
+		uint amount = _ether / lowestAsk();
 		if (amount < order.amount) {
 			swap(order.trader, msg.sender, order.price, amount);
 			_ethRemaining = 0;
@@ -521,7 +536,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 //		internal
 		returns (uint _amountRemaining)
 	{
-		Order order = orders[highestBid()];
+		Order order = orders[getNextOrderId(highestBid())];
 		if (_amount < order.amount) {
 			swap(msg.sender, order.trader, order.price, _amount);
 			_amountRemaining = 0;
@@ -541,8 +556,9 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		uint price = orders[_orderId].price;
 		remove(price, _orderId);
 		linkedLists[price].auxData -= orders[_orderId].amount;
-		if (linkedLists[orders[_orderId].price].size == 0)
+		if (linkedLists[orders[_orderId].price].size == 0) {
 			remove(PRICE_BOOK, price);
+		}
 		delete orders[_orderId];
 		return true;
 	}
@@ -572,28 +588,36 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 	}
 
 	function insertPrice(uint _price, bool _swap)
-//		internal
-		returns (uint)
+		internal
+		returns (uint _nodeKey)
 	{
-		if (!initLinkedList(_price, NO_RESET)) return; // in Price_book
-		linkedLists[0].newNodeKey = _price; // Price Book nodes a the actual prices
+		if (!initLinkedList(_price, NO_RESET)) return; // already in Price_book
+		linkedLists[0].newNodeKey = _price; // Price Book nodes are the actual prices
 
-		if (_swap) {
+		if (_swap == SELL) {
 			// Is selling
-			if (_price < lowestAsk())
+			if (_price < lowestAsk()) {
 				// is lowest ask
-				return insertAfter(PRICE_BOOK, HEAD, _price);
-			else
+				return insertBefore(PRICE_BOOK, lowestAsk(), _price);
+			} else {
 				// is higher than lowest ask 
-				return insertAfter(PRICE_BOOK, seekUp(PRICE_BOOK, lowestAsk(), _price), _price);			
+				return insertAfter(PRICE_BOOK,
+					seekUp(PRICE_BOOK, lowestAsk(), _price),
+					_price);			
+			}			
 		} else {
 			// Is buying
-			if (_price > highestBid())
+			if (_price > highestBid()) {
 				// is highest bid
-				return insertBefore(PRICE_BOOK, HEAD, _price);
-			else
+				return insertAfter(PRICE_BOOK, highestBid(), _price);
+			} else {
 				// is lower than highest bid
-				return insertBefore(PRICE_BOOK, seekDown(PRICE_BOOK, highestBid(), _price), _price);
+				return insertBefore(PRICE_BOOK,
+					seekDown(PRICE_BOOK, highestBid(), _price),
+					_price);
+			}
+				// return insertBefore(PRICE_BOOK, seekDown(PRICE_BOOK, highestBid(), _price), _price);
 		}
+		return;
 	}
 }
