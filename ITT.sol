@@ -2,6 +2,7 @@ contract LibModifiers
 {
 /* Modifiers */
 
+	uint constant NULL = 0;
 	uint constant MINNUM = 1;
 	uint constant MAXNUM = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
@@ -61,7 +62,8 @@ contract MultiCircularLinkedList
 	
 /* Constants */
 
-	uint constant HEAD = 0; // All linked lists are circular with static head.
+	uint constant NULL = 0;
+	uint constant HEAD = NULL; // All linked lists are circular with static head.
 	bool constant PREV = false;
 	bool constant NEXT = true;
 
@@ -95,7 +97,7 @@ contract MultiCircularLinkedList
 		returns (bool)
 //		internal
 	{
-		if (linkedLists[_listKey].nodes[HEAD].dataIndex != 0 && !_reset) 
+		if (linkedLists[_listKey].nodes[HEAD].dataIndex != NULL && !_reset) 
 			return false; // Already exisits.
 		linkedLists[_listKey].newNodeKey = 1; // key 1 is already head
 		linkedLists[_listKey].nodes[HEAD].next = HEAD; // set next link to head
@@ -160,8 +162,7 @@ contract MultiCircularLinkedList
 		
 	function remove(uint _listKey, uint _nodeKey)
 //		internal
-		keyExists(_listKey, _nodeKey)
-		isNotEmpty(_listKey)
+//		keyExists(_listKey, _nodeKey)
 		returns (bool)
 	{
 		LinkedList list = linkedLists[_listKey];
@@ -208,7 +209,7 @@ contract MultiCircularLinkedList
 		constant
 		returns (bool)
 	{ 
-		if (linkedLists[_listKey].nodes[_nodeKey].dataIndex > 0) 
+		if (linkedLists[_listKey].nodes[_nodeKey].dataIndex != NULL) 
 			return true;
 	}
 }
@@ -330,14 +331,15 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 
 /* Modifiers */
 	modifier isValidBuy(uint _bidPrice, uint _amount) {
-		if ((etherBalances[msg.sender] + msg.value) < (_amount * _bidPrice)
-			|| _bidPrice == 0) throw; _	// has nothing to spend
+		if (msg.value > 0) etherBalances[msg.sender] += msg.value;
+		if ((etherBalances[msg.sender]) < (_amount * _bidPrice)
+			|| _bidPrice == NULL) throw; _	// has insufficient ether.
 	}
 
 	modifier isValidSell(uint _askPrice, uint _amount) {
 		if (_amount > balances[msg.sender] ||
-			_askPrice == 0 ||
-			_amount == 0) throw; _
+			_askPrice == NULL ||
+			_amount == NULL) throw; _
 	}
 
 	modifier ownsOrder(uint _orderId) {
@@ -386,17 +388,22 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 
 		priceBook.nodes[MAXNUM].dataIndex = MAXNUM;
 		priceBook.nodes[MAXNUM].prev = MINNUM;
+		priceBook.nodes[MAXNUM].next = MAXNUM;
 		priceBook.nodes[MAXNUM].dataIndex = 1;
 
 		priceBook.nodes[MINNUM].dataIndex = MINNUM;
+		priceBook.nodes[MINNUM].prev = MINNUM;
 		priceBook.nodes[MINNUM].next = MAXNUM;
 		priceBook.nodes[MINNUM].dataIndex = 1;
+		
+		orders.push(Order(1,1,0)); // dummy order at index 0 to allow for order validation
 	}
 	
 	function () 
 		isProtected
 	{ 
-		etherBalances[msg.sender] += msg.value;
+//		etherBalances[msg.sender] += msg.value;
+		throw;
 	}
 		
 /* Functions Getters */
@@ -450,7 +457,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		constant
 		returns(uint)
 	{
-		return linkedLists[_price].nodes[linkedLists[_price].nodes[HEAD].next].dataIndex;
+		return linkedLists[_price].nodes[stepNext(_price, HEAD)].dataIndex;
 	}
 	
 	function highestBid() public
@@ -475,11 +482,10 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		returns (bool _success, uint _spent, uint _ordId)
 	{
 		uint ethRemaining = _bidPrice * _amount;
-		if (msg.value > 0) etherBalances[msg.sender] += msg.value;
 
 		_spent = ethRemaining; // tally to return unspent ether.
 		
-		while (_bidPrice >= lowestAsk() && ethRemaining > 0){
+		while (ethRemaining > 0 && _bidPrice >= lowestAsk()){
 			// Take lowest sell order below the bid price.
 			// *ANALYSIS REQ* LOOP -How prone to gas limit failures?
 			ethRemaining = takeAsk(ethRemaining);
@@ -487,13 +493,13 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 
 		if (ethRemaining > 0 && _make) {
 			// Make 'Buy' order with leftover ether.
-			insertBidFIFO(_bidPrice);
-			_ordId = orders.push(Order(_bidPrice, ethRemaining / _bidPrice, msg.sender));
-			linkedLists[_bidPrice].auxData += ethRemaining / _bidPrice;
-			unavailableEther[msg.sender] += ethRemaining;
+			_ordId = orders.push(Order(_bidPrice, ethRemaining / _bidPrice, msg.sender)) - 1;
+			insertBidFIFO(_bidPrice); // Make sure price FIFO exists
+			insertAfter(_bidPrice, HEAD, _ordId); // Insert order ID into price FIFO
+			linkedLists[_bidPrice].auxData += ethRemaining / _bidPrice; // Update price volume
+			unavailableEther[msg.sender] += ethRemaining; // lock ether from withdrawal
 		}
 		_spent -= ethRemaining;
-		etherBalances[msg.sender] -= _spent;
 		_success = true;
 	}
 
@@ -503,7 +509,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		returns (bool _success, uint _sold, uint _ordId)
 	{
 		uint amountRemaining = _amount;
-		while (_askPrice <= highestBid() && amountRemaining > 0)	{
+		while (amountRemaining > 0 && _askPrice <= highestBid())	{
 			// Take highest bid order above the ask price.
 			// *ANALYSIS REQ* LOOP - How prone to gas limit failures?
 			amountRemaining = takeBid(amountRemaining);
@@ -511,10 +517,11 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 
 		if (amountRemaining > 0 && _make) {
 			// Make 'Sell' order with remaining amount.
-			insertAskFIFO(_askPrice);
-			_ordId = orders.push(Order(_askPrice, _amount, msg.sender));
-			linkedLists[_askPrice].auxData += _amount;
-			unavailable[msg.sender] += _amount;
+			_ordId = orders.push(Order(_askPrice, _amount, msg.sender)) - 1; // Store order details
+			insertAskFIFO(_askPrice); // Make sure price FIFO exists
+			insertAfter(_askPrice, HEAD, _ordId); // Enter order ID into price FIFO
+			linkedLists[_askPrice].auxData += _amount; // Update price volume
+			unavailable[msg.sender] += _amount; // lock tokens from double sell attemps
 		}
 		_sold -= _amount;
 		_success = true;
@@ -555,7 +562,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		}
 		swap(order.trader, msg.sender, order.price, order.amount);
 		_ethRemaining = _ether - order.price * order.amount;
-		closeOrder(lowestAsk());
+		closeFirstOrder(lowestAsk());
 		return;		
 	}
 	
@@ -572,7 +579,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		}
 		swap(msg.sender, order.trader, order.price, order.amount);
 		_amountRemaining = _amount - order.amount;
-		closeOrder(highestBid());
+		closeFirstOrder(highestBid());
 		return;		
 	}
 	
@@ -581,10 +588,21 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		returns (bool)
 	{
 		if (balances[_seller] < _amount) throw;
+		linkedLists[_price].auxData -= _amount;
 		balances[_seller] -= _amount;
 		unavailable[_seller] -= _amount;
 		etherBalances[_seller] += _price * _amount;
+		etherBalances[_buyer] -= _price * _amount;
 		balances[_buyer] += _amount;
+		return true;
+	}
+
+	function closeFirstOrder(uint _price)
+//		internal
+		returns (bool)
+	{
+		uint _orderId = linkedLists[_price].nodes[stepNext(_price, HEAD)].dataIndex;
+		closeOrder(_orderId);
 		return true;
 	}
 
@@ -595,8 +613,10 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		uint price = orders[_orderId].price;
 		remove(price, _orderId);
 		linkedLists[price].auxData -= orders[_orderId].amount;
-		if (linkedLists[orders[_orderId].price].size == 0)
+		if (linkedLists[orders[_orderId].price].size == 0) {
 			remove(PRICE_BOOK, price);
+			delete linkedLists[price];
+		}
 		delete orders[_orderId];
 		return true;
 	}
@@ -619,7 +639,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		returns (uint _ret)
 	{
 		_ret = highestBid();
-		while (_price < priceBook.nodes[_ret].prev)
+		while (_price < _ret)
 			_ret = priceBook.nodes[_ret].prev;
 		return;
 	}
@@ -630,7 +650,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		returns (uint _ret)
 	{
 		_ret = lowestAsk();
-		while (_price > priceBook.nodes[_ret].next)
+		while (_price > _ret)
 			_ret = priceBook.nodes[_ret].next;
 		return;
 	}
@@ -639,8 +659,9 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		returns (bool)
 	{
 		DoubleLinkNode memory _insNode = priceBook.nodes[seekBidInsert(_price)];
-		if (_insNode.next == _price) return;
+		if (_insNode.next == _price) return; // exisiting FIFO
 		priceBook.nodes[_insNode.next].prev = _price;
+		linkedLists[_price].nodes[HEAD].dataIndex = 1; // set existing
 		_insNode.next = _price;
 		if (_price > priceBook.nodes[HEAD].prev) priceBook.nodes[HEAD].prev = _price;
 		return true;
@@ -650,8 +671,9 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		returns (bool)
 	{
 		DoubleLinkNode memory _insNode = priceBook.nodes[seekAskInsert(_price)];
-		if (_insNode.prev == _price) return;
+		if (_insNode.prev == _price) return; // exisiting FIFO
 		priceBook.nodes[_insNode.prev].next = _price;
+		linkedLists[_price].nodes[HEAD].dataIndex = 1; // set existing
 		_insNode.prev = _price;
 		if (_price < priceBook.nodes[HEAD].next) priceBook.nodes[HEAD].next = _price;
 		return true;

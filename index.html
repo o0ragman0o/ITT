@@ -38,8 +38,8 @@ function sell() {
 	var amount = document.getElementById('amount').value;
 	var make = document.getElementById('make').checked;
 	orderNum = itt.sell(price, amount, make,
-								 {from:acc()},
-								 update());
+								 {from:acc()});
+	update();
 }
 
 function buy() {
@@ -48,13 +48,14 @@ function buy() {
 	var make = document.getElementById('make').checked;
 	var reqEther = price * amount;
 	orderNum = itt.buy(price, amount, make,
-					   {from:acc(), value:reqEther},
-					   update());
+					   {from:acc(), value:price * amount});
+	update();
 }
 	
 function withdraw() {
 	var amount = itt.etherBalances(acc());
-	itt.withdraw(amount, {from:acc()});	
+	itt.withdraw(amount, {from:acc()});
+	update();
 }
 
 </script>
