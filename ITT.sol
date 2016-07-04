@@ -2,6 +2,7 @@ contract LibModifiers
 {
 /* Modifiers */
 
+	uint constant MINNUM = 1;
 	uint constant MAXNUM = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
 	// To throw call not made by owner
@@ -101,6 +102,15 @@ contract MultiCircularLinkedList
 		linkedLists[_listKey].nodes[HEAD].prev = HEAD; // set previous link to head
 		linkedLists[_listKey].nodes[HEAD].dataIndex = 1;
 		return true;
+	}
+	
+	function getNode(uint _listKey, uint _nodeKey) public
+		constant
+		returns (uint _dataIndex, uint _next, uint _prev)
+	{
+		_dataIndex = linkedLists[_listKey].nodes[_nodeKey].dataIndex;
+		_next = linkedLists[_listKey].nodes[_nodeKey].next;
+		_prev = linkedLists[_listKey].nodes[_nodeKey].prev;
 	}
 
 	function insertBefore(uint _listKey, uint _nodeKey, uint _dataIndex)
@@ -319,8 +329,9 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 {
 
 /* Modifiers */
-	modifier isValidBuy(uint _bidPrice) {
-		if (msg.value == 0 || _bidPrice == 0) throw; _	// has nothing to spend
+	modifier isValidBuy(uint _bidPrice, uint _amount) {
+		if ((etherBalances[msg.sender] + msg.value) < (_amount * _bidPrice)
+			|| _bidPrice == 0) throw; _	// has nothing to spend
 	}
 
 	modifier isValidSell(uint _askPrice, uint _amount) {
@@ -332,7 +343,12 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 	modifier ownsOrder(uint _orderId) {
 		if (msg.sender != orders[_orderId].trader) throw; _		
 	}
+	
+	modifier hasEther(uint _ether) {
+		if (etherBalances[msg.sender] < _ether) throw; _
+	}
 
+	
 /* Structs */
 
 	struct Order {
@@ -343,38 +359,44 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 	
 /* Constants */
 
-	bool constant BUY = false;
-	bool constant BID = false;
-	bool constant SELL = true;
-	bool constant ASK = true;
-	bool constant MAKE = false;
-	bool constant TAKE = true;
-	bool constant NO_RESET = false;
-	bool constant RESET = true;
 	uint constant PRICE_BOOK = 0;
-
-
 
 /* State Valiables */
 
 	// Orders in order of creation
 	Order[] public orders;
     // Token holder accounts
-    mapping (address => uint) balances;
-    mapping (address => uint) unavailable;
+    mapping (address => uint) public balances;
+    mapping (address => uint) public unavailable;
+	mapping (address => uint) public etherBalances;
+	mapping (address => uint) public unavailableEther;
+    LinkedList public priceBook = linkedLists[PRICE_BOOK];
 
+	uint public minnum = MINNUM;
+	uint public maxnum = MAXNUM;
+	
 /* Functions */
 
 	function ITT() {
 		totalSupply = 1000000;
 		balances[msg.sender] = 1000000;
-		linkedLists[PRICE_BOOK].nodes[HEAD].dataIndex = 1;
+		priceBook.nodes[HEAD].dataIndex = MINNUM;
+		priceBook.nodes[HEAD].prev = MINNUM;
+		priceBook.nodes[HEAD].next = MAXNUM;
+
+		priceBook.nodes[MAXNUM].dataIndex = MAXNUM;
+		priceBook.nodes[MAXNUM].prev = MINNUM;
+		priceBook.nodes[MAXNUM].dataIndex = 1;
+
+		priceBook.nodes[MINNUM].dataIndex = MINNUM;
+		priceBook.nodes[MINNUM].next = MAXNUM;
+		priceBook.nodes[MINNUM].dataIndex = 1;
 	}
 	
 	function () 
 		isProtected
 	{ 
-		throw; // refuse payments
+		etherBalances[msg.sender] += msg.value;
 	}
 		
 /* Functions Getters */
@@ -384,6 +406,8 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		returns (
 			uint _balance,
 			uint _available,
+			uint _etherBalance,
+			uint _etherAvailable,
 			uint _lowestAsk,
 			uint _highestBid,
 			uint _askVol,
@@ -391,7 +415,9 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		)
 	{
 		_balance = balances[msg.sender];
-		_available = _balance - unavailable[msg.sender];
+		_available = available(msg.sender);
+		_etherBalance = etherBalances[msg.sender];
+		_etherAvailable = availableEther(msg.sender);
 		_lowestAsk = lowestAsk();
 		_highestBid = highestBid();
 		_askVol = linkedLists[_lowestAsk].auxData;
@@ -399,38 +425,58 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		return;
 	}
 
-	function getVolumeAtPrice(uint _price)
+	function available(address _addr) public
 		constant
 		returns (uint)
 	{
-		return linkedLists[PRICE_BOOK].auxData;
+		return	balances[msg.sender] - unavailable[msg.sender];
 	}
 	
-	function highestBid() 
+	function availableEther(address _addr) public
+		constant
+		returns (uint)
+	{
+		return	etherBalances[msg.sender] - unavailableEther[msg.sender];
+	}
+	
+	function getVolumeAtPrice(uint _price) public
+		constant
+		returns (uint)
+	{
+		return linkedLists[_price].auxData;
+	}
+	
+	function getFirstOrderIdAtPrice(uint _price) public
 		constant
 		returns(uint)
 	{
-		return stepPrev(PRICE_BOOK, HEAD);
+		return linkedLists[_price].nodes[linkedLists[_price].nodes[HEAD].next].dataIndex;
 	}
 	
-	function lowestAsk() 
-		constant 
-		returns(uint _ret)
+	function highestBid() public
+		constant
+		returns(uint)
 	{
-		_ret = stepNext(PRICE_BOOK, HEAD);
-		if (_ret == 0) _ret = MAXNUM;
-		return;
+		return priceBook.nodes[HEAD].prev;
+	}
+	
+	function lowestAsk() public
+		constant 
+		returns(uint)
+	{
+		return priceBook.nodes[HEAD].next;
 	}
 
 /* Functions Public */
 
-	function buy (uint _bidPrice, bool _make) public
+	function buy (uint _bidPrice, uint _amount, bool _make) public
 		isProtected
-		isValidBuy(_bidPrice)
+		isValidBuy(_bidPrice, _amount)
 		returns (bool _success, uint _spent, uint _ordId)
 	{
+		uint ethRemaining = _bidPrice * _amount;
+		if (msg.value > 0) etherBalances[msg.sender] += msg.value;
 
-		uint ethRemaining = msg.value; 
 		_spent = ethRemaining; // tally to return unspent ether.
 		
 		while (_bidPrice >= lowestAsk() && ethRemaining > 0){
@@ -441,15 +487,13 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 
 		if (ethRemaining > 0 && _make) {
 			// Make 'Buy' order with leftover ether.
-			_ordId = make(_bidPrice, ethRemaining / _bidPrice, BID);
-		}
-
-		if (ethRemaining > 0 && !_make) {
-			// does not wish to make an order so refund leftover ether.
-			// *ANALYSIS REQ* Is this prone to ether bootstrap failure?
-			if(!msg.sender.send(ethRemaining)) throw;
+			insertBidFIFO(_bidPrice);
+			_ordId = orders.push(Order(_bidPrice, ethRemaining / _bidPrice, msg.sender));
+			linkedLists[_bidPrice].auxData += ethRemaining / _bidPrice;
+			unavailableEther[msg.sender] += ethRemaining;
 		}
 		_spent -= ethRemaining;
+		etherBalances[msg.sender] -= _spent;
 		_success = true;
 	}
 
@@ -463,11 +507,14 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 			// Take highest bid order above the ask price.
 			// *ANALYSIS REQ* LOOP - How prone to gas limit failures?
 			amountRemaining = takeBid(amountRemaining);
-		}
+	}
 
 		if (amountRemaining > 0 && _make) {
 			// Make 'Sell' order with remaining amount.
-			_ordId = make(_askPrice, amountRemaining, ASK);
+			insertAskFIFO(_askPrice);
+			_ordId = orders.push(Order(_askPrice, _amount, msg.sender));
+			linkedLists[_askPrice].auxData += _amount;
+			unavailable[msg.sender] += _amount;
 		}
 		_sold -= _amount;
 		_success = true;
@@ -481,29 +528,24 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		closeOrder(_orderId);
 		_success = true;
 	}
+	
+	function withdraw(uint _ether) public
+		isProtected
+		hasEther(_ether)
+		returns (bool _success)
+	{
+		etherBalances[msg.sender] -= _ether;
+		if(!msg.sender.send(_ether)) throw;
+		_success = true;
+	}
 
 /* Functions Internal */
-
-	function make(uint _price, uint _amount, bool _swap)
-//		internal
-		returns (uint _orderId)
-	{
-		Order memory order;
-		order.trader = msg.sender;
-		order.price = _price;
-		order.amount = _amount;
-		_orderId = orders.push(order);
-		insertPrice(_price, _swap); // setup FIFO in price book
-		insertBefore(_price, HEAD, _orderId); // insert order into FIFO
-		addVolume(_price, _amount);
-		return _orderId;		
-	}
-	
+		
 	function takeAsk(uint _ether)
 //		internal
 		returns (uint _ethRemaining)
 	{
-		Order order = orders[lowestAsk()];
+		Order order = orders[getFirstOrderIdAtPrice(lowestAsk())];
 		uint amount = _ether / order.price;
 		if (amount < order.amount) {
 			swap(order.trader, msg.sender, order.price, amount);
@@ -521,7 +563,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 //		internal
 		returns (uint _amountRemaining)
 	{
-		Order order = orders[highestBid()];
+		Order order = orders[getFirstOrderIdAtPrice(highestBid())];
 		if (_amount < order.amount) {
 			swap(msg.sender, order.trader, order.price, _amount);
 			_amountRemaining = 0;
@@ -534,6 +576,18 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		return;		
 	}
 	
+	function swap(address _seller, address _buyer, uint _price, uint _amount)
+//		internal
+		returns (bool)
+	{
+		if (balances[_seller] < _amount) throw;
+		balances[_seller] -= _amount;
+		unavailable[_seller] -= _amount;
+		etherBalances[_seller] += _price * _amount;
+		balances[_buyer] += _amount;
+		return true;
+	}
+
 	function closeOrder(uint _orderId)
 //		internal
 		returns (bool)
@@ -544,18 +598,6 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		if (linkedLists[orders[_orderId].price].size == 0)
 			remove(PRICE_BOOK, price);
 		delete orders[_orderId];
-		return true;
-	}
-		
-	function swap(address _seller, address _buyer, uint _price, uint _amount)
-//		internal
-		returns (bool)
-	{
-		if (balances[_seller] < _amount) throw;
-		balances[_seller] -= _amount;
-		unavailable[_seller] -= _amount;
-		if(!_seller.send(_price * _amount)) throw;
-		balances[_buyer] += _amount;
 		return true;
 	}
 
@@ -571,29 +613,47 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		linkedLists[_price].auxData -= _amount; // update volume		
 	}
 
-	function insertPrice(uint _price, bool _swap)
+	function seekBidInsert(uint _price)
+		constant
 //		internal
-		returns (uint)
+		returns (uint _ret)
 	{
-		if (!initLinkedList(_price, NO_RESET)) return; // in Price_book
-		linkedLists[0].newNodeKey = _price; // Price Book nodes a the actual prices
+		_ret = highestBid();
+		while (_price < priceBook.nodes[_ret].prev)
+			_ret = priceBook.nodes[_ret].prev;
+		return;
+	}
 
-		if (_swap) {
-			// Is selling
-			if (_price < lowestAsk())
-				// is lowest ask
-				return insertAfter(PRICE_BOOK, HEAD, _price);
-			else
-				// is higher than lowest ask 
-				return insertAfter(PRICE_BOOK, seekUp(PRICE_BOOK, lowestAsk(), _price), _price);			
-		} else {
-			// Is buying
-			if (_price > highestBid())
-				// is highest bid
-				return insertBefore(PRICE_BOOK, HEAD, _price);
-			else
-				// is lower than highest bid
-				return insertBefore(PRICE_BOOK, seekDown(PRICE_BOOK, highestBid(), _price), _price);
-		}
+	function seekAskInsert(uint _price)
+		constant
+//		internal
+		returns (uint _ret)
+	{
+		_ret = lowestAsk();
+		while (_price > priceBook.nodes[_ret].next)
+			_ret = priceBook.nodes[_ret].next;
+		return;
+	}
+	
+	function insertBidFIFO (uint _price)
+		returns (bool)
+	{
+		DoubleLinkNode memory _insNode = priceBook.nodes[seekBidInsert(_price)];
+		if (_insNode.next == _price) return;
+		priceBook.nodes[_insNode.next].prev = _price;
+		_insNode.next = _price;
+		if (_price > priceBook.nodes[HEAD].prev) priceBook.nodes[HEAD].prev = _price;
+		return true;
+	}
+
+	function insertAskFIFO (uint _price)
+		returns (bool)
+	{
+		DoubleLinkNode memory _insNode = priceBook.nodes[seekAskInsert(_price)];
+		if (_insNode.prev == _price) return;
+		priceBook.nodes[_insNode.prev].next = _price;
+		_insNode.prev = _price;
+		if (_price < priceBook.nodes[HEAD].next) priceBook.nodes[HEAD].next = _price;
+		return true;
 	}
 }
