@@ -1,32 +1,8 @@
-contract LibModifiers
-{
-/* Modifiers */
+import './misc.sol';
+//import './MCLL.sol';
+import './EIP20.sol';
 
-	uint constant NULL = 0;
-	uint constant MINNUM = 1;
-	uint constant MAXNUM = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
-
-	// To throw call not made by owner
-	modifier isOwner() {
-		if (msg.sender != owner) throw;
-		_
-	}
-
-	// To lock a function from entry if it or another protected function
-	// has already been called and not yet returned.
-	modifier isProtected() {
-		if(mutex) throw;
-		else mutex = true;
-		_
-		delete mutex;
-		return;  // Functions require singele exit and return parameters
-	}
-	address owner;
-	bool mutex;
-}
-
-
-contract MultiCircularLinkedList 
+contract MultiCircularLinkedList is LibModifiers
 {
 /* Modifiers */
 
@@ -48,8 +24,7 @@ contract MultiCircularLinkedList
 	// Generic double linked list node.
 	struct DoubleLinkNode {
 		uint dataIndex;
-		uint next;
-		uint prev;
+		mapping (bool => uint) links;
 	}
 	
 	// Generic circular linked list parameters. Head is static index 1.
@@ -66,93 +41,68 @@ contract MultiCircularLinkedList
 	uint constant HEAD = NULL; // All linked lists are circular with static head.
 	bool constant PREV = false;
 	bool constant NEXT = true;
+	bool constant DEC = false;
+	bool constant ASC = true;
+	
 
 /* State valiables */
 
-	// `linkedLists` is a mapping to store all circular linked lists.
-	// The `dataIndex` of each node in the index list (key == 0) is the key for a
-	// a child linked list, e.g:
-	//
-	//     linkedLists[0].dataIndex == 100 --> linkedLists[100]
-	//
-	// The dataIndex of a child list (key !=0) can be use as a key or index for
-	// an array or mapping, e.g.
-	//
-	//     linkedLists[100].dataIndex == 123 --> data[123]
-	//
-
 	mapping (uint => LinkedList) public linkedLists;  
-
-/* State variable Accessor Functions (For reference only. Leave commented)
-
-	function linkedLists(uint listKey, uint nodeKey, uint DATAINDEX) returns (uint) // dataIndex
-	function linkedLists(uint listKey, uint nodeKey, uint NEXT) returns (uint) // next
-	function linkedLists(uint listKey, uint nodeKey, uint PREV) returns (uint) // prev
-*/
 
 /* Functions */
 
 	// Initialises circular linked list to a valid state
 	function initLinkedList(uint _listKey, bool _reset) 
+		internal
 		returns (bool)
-//		internal
 	{
-		if (linkedLists[_listKey].nodes[HEAD].dataIndex != NULL && !_reset) 
-			return false; // Already exisits.
-		linkedLists[_listKey].newNodeKey = 1; // key 1 is already head
-		linkedLists[_listKey].nodes[HEAD].next = HEAD; // set next link to head
-		linkedLists[_listKey].nodes[HEAD].prev = HEAD; // set previous link to head
-		linkedLists[_listKey].nodes[HEAD].dataIndex = 1;
+		LinkedList list = linkedLists[_listKey];
+		if (list.nodes[HEAD].dataIndex != NULL && !_reset) return false; // Already exisits.
+		list.newNodeKey = 1; // key 0 is already head
+		list.nodes[HEAD].links[NEXT] = HEAD; // set next link to head
+		list.nodes[HEAD].links[PREV] = HEAD; // set previous link to head
+		list.nodes[HEAD].dataIndex = 1;
 		return true;
 	}
 	
 	function getNode(uint _listKey, uint _nodeKey) public
 		constant
-		returns (uint _dataIndex, uint _next, uint _prev)
+		returns (uint _dataIndex, uint _prev, uint _next)
 	{
 		_dataIndex = linkedLists[_listKey].nodes[_nodeKey].dataIndex;
-		_next = linkedLists[_listKey].nodes[_nodeKey].next;
-		_prev = linkedLists[_listKey].nodes[_nodeKey].prev;
+		_prev = linkedLists[_listKey].nodes[_nodeKey].links[PREV];
+		_next = linkedLists[_listKey].nodes[_nodeKey].links[NEXT];
 	}
 
-	function insertBefore(uint _listKey, uint _nodeKey, uint _dataIndex)
-//		internal
+	function insert(uint _listKey, uint _nodeKey, uint _dataIndex, bool _dir)
+		// _dir == false  Inserts new node BEFORE _nodeKey
+		// _dir == true   Inserts new node AFTER _nodeKey
+		internal
 		keyExists(_listKey, _nodeKey)
 		isValidData(_dataIndex)
 		returns (uint)
 	{
 		LinkedList list = linkedLists[_listKey];
-		DoubleLinkNode newNode = list.nodes[list.newNodeKey];
-		newNode.next = _nodeKey;
-		newNode.prev = list.nodes[_nodeKey].prev;
-		list.nodes[list.nodes[_nodeKey].prev].next = list.newNodeKey;
-		list.nodes[_nodeKey].prev = list.newNodeKey;
-		newNode.dataIndex = _dataIndex; // Store new data.
-		list.size++;
-		list.newNodeKey++;
-		return list.newNodeKey - 1;
-	}
-
-	function insertAfter(uint _listKey, uint _nodeKey, uint _dataIndex)
-//		internal
-		keyExists(_listKey, _nodeKey)
-		isValidData(_dataIndex)
-		returns (uint)
-	{
-		LinkedList list = linkedLists[_listKey];
-		DoubleLinkNode newNode = list.nodes[list.newNodeKey];
-		newNode.prev = _nodeKey;
-		newNode.next = list.nodes[_nodeKey].next;
-		list.nodes[list.nodes[_nodeKey].next].prev = list.newNodeKey;
-		list.nodes[_nodeKey].next = list.newNodeKey;
-		newNode.dataIndex = _dataIndex; // Store new data.
+		uint newKey = list.newNodeKey; 
+		DoubleLinkNode a = list.nodes[_nodeKey];
+		DoubleLinkNode b = list.nodes[a.links[_dir]];
+		DoubleLinkNode c = list.nodes[list.newNodeKey];
+		// C -> A
+		c.links[!_dir] = _nodeKey;
+		// C -> B
+		c.links[_dir] = a.links[_dir];
+		// B -> C
+		b.links[!_dir] = newKey;
+		// A -> C
+		a.links[_dir] = newKey;
+		c.dataIndex = _dataIndex;
 		list.size++;
 		list.newNodeKey++;
 		return list.newNodeKey - 1;
 	}
 	
 	function update(uint _listKey, uint _nodeKey, uint _dataIndex)
-//		internal
+		internal
 		keyExists(_listKey, _nodeKey)
 		returns (bool)
 	{
@@ -161,48 +111,25 @@ contract MultiCircularLinkedList
 	}
 		
 	function remove(uint _listKey, uint _nodeKey)
-//		internal
-//		keyExists(_listKey, _nodeKey)
+		internal
 		returns (bool)
 	{
 		LinkedList list = linkedLists[_listKey];
-		list.nodes[list.nodes[_nodeKey].prev].next = list.nodes[_nodeKey].next;
-		list.nodes[list.nodes[_nodeKey].next].prev = list.nodes[_nodeKey].prev;
+		list.nodes[list.nodes[_nodeKey].links[PREV]].links[NEXT] = list.nodes[_nodeKey].links[NEXT];
+		list.nodes[list.nodes[_nodeKey].links[NEXT]].links[PREV] = list.nodes[_nodeKey].links[PREV];
 		list.size--;
-		delete list.nodes[_nodeKey];  // delete the node.
+		delete list.nodes[_nodeKey].links[PREV];
+		delete list.nodes[_nodeKey].links[NEXT];
+		delete list.nodes[_nodeKey];
 		return true;
 	}
 	
-	function stepPrev(uint _listKey, uint _nodeKey)
+	function step(uint _listKey, uint _nodeKey, bool _dir)
+		// get next or previous node key
 		keyExists(_listKey, _nodeKey)
 		constant returns (uint)
 	{
-		return linkedLists[_listKey].nodes[_nodeKey].next;
-	}
-
-	function stepNext(uint _listKey, uint _nodeKey)
-		keyExists(_listKey, _nodeKey)
-		constant returns (uint)
-	{
-		return linkedLists[_listKey].nodes[_nodeKey].prev;
-	}
-
-	function seekUp(uint _listKey, uint _start, uint _target)
-		keyExists(_listKey, _start)
-		constant returns (uint)
-	{
-		LinkedList list = linkedLists[_listKey];
-		while(list.nodes[_start].next < _target) _start = list.nodes[_start].next;
-		return _start;
-	}
-
-	function seekDown(uint _listKey, uint _start, uint _target)
-		keyExists(_listKey, _start)
-		constant returns (uint)
-	{
-		LinkedList list = linkedLists[_listKey];
-		while(list.nodes[_start].prev > _target) _start = list.nodes[_start].prev;
-		return _start;
+		return linkedLists[_listKey].nodes[_nodeKey].links[_dir];
 	}
 
 	function isValidKey(uint _listKey, uint _nodeKey) 
@@ -213,126 +140,52 @@ contract MultiCircularLinkedList
 			return true;
 	}
 }
-// EIP20 Standard Token Interface
 
 
-contract EIP20Interface is LibModifiers
-{
-    /* Modifiers */
-	modifier isAvailable(uint _amount) {
-		if (_amount < balances[msg.sender]) throw;
-		_
-	}
-	
-	modifier hasAllowance(address _from, uint _amount) {
-		if (_amount > allowances[_from][msg.sender] ||
-		   _amount > balances[_from]) throw;
-		_
-	}
 
-    /* Structs */
-        
-    /* Constants */
-
-    /* State Valiables */
-    mapping (address => uint) public balances;
-    mapping (address => mapping (address => uint)) public allowances;
-    uint public totalSupply;
-    string public symbol;
-    uint public decimalPlaces;
-
-/* State variable Accessor Functions (leave commented)
-
-	function balances(address tokenHolder) returns (uint);
-	function allowanaces (address tokenHolders, address proxy, uint allowance) returns (uint);
-	function totalSupply() returns (uint);
-	function symbol() returns(string);
-	function decimalPlaces() returns(uint);
-*/
-
-    // Send _value amount of tokens to address _to
-    function transfer(address _to, uint256 _value) returns (bool success);
-
-    // Send _value amount of tokens from address _from to address _to
-    function transferFrom(address _from, address _to, uint256 _value) returns (bool success);
-
-    // Allow _spender to withdraw from your account, multiple times, up to the _value amount. If this function is called again it overwrites the current allowance with _value.
-    function approve(address _spender, uint256 _value) returns (bool success);
-
-    // Triggered when tokens are transferred.
-    event Transfer(address indexed _from, address indexed _to, uint256 _value);
-
-    // Triggered whenever approve(address _spender, uint256 _value) is called.
-    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
-}
-
-contract EIP20Token is EIP20Interface
-{
-/* Modifiers */
-
-/* Structs */
-        
-/* Constants */
-
-/* State Valiables */
-
-/* Funtions Public */
- 
-    // Send _value amount of tokens to address _to
-    function transfer(address _to, uint256 _value) 
-        isProtected()
-		isAvailable(_value)
-		returns (bool success)
-    {
-        if (balances[msg.sender] < _value) throw;
-        balances[msg.sender] -= _value;
-        balances[_to] += _value;
-        Transfer(msg.sender, _to, _value);
-        success = true;
-    }
-
-
-    // Send _value amount of tokens from address _from to address _to
-    function transferFrom(address _from, address _to, uint256 _value)
-        isProtected
-        hasAllowance(_from, _value)
-        returns (bool success)
-    {
-        balances[_from] -= _value;
-        balances[_to] += _value;
-        Transfer(msg.sender, _to, _value);
-        success = true;
-    }
-
-    // Allow _spender to withdraw from your account, multiple times, up to the _value amount. If this function is called again it overwrites the current allowance with _value.
-    function approve(address _spender, uint256 _value)
-        isProtected
-		returns (bool success)        
-    {
-        if (balances[msg.sender] == 0) throw;
-        allowances[msg.sender][_spender] = _value;
-        Approval(msg.sender, _spender, _value);
-        success = true;
-    }
-
-/* Events */
-
-    // Triggered when tokens are transferred.
-    event Transfer(address indexed _from, address indexed _to, uint256 _value);
-
-    // Triggered whenever approve(address _spender, uint256 _value) is called.
-    event Approval(address indexed _owner, address indexed _spender, uint256 _value);   
-}
 
 
 /* Intrinsically Tradable Token code */	
 contract ITT is EIP20Token, MultiCircularLinkedList
 {
+	
+/* Structs */
 
+	struct Order {
+		uint price; // Price in ether
+		uint amount; // Amount of tokens to trade
+		address trader; // Token holder address
+	}
+	
+/* Constants */
+
+	uint constant PRICE_BOOK = 0;
+	bool constant BID = false;
+	bool constant ASK = true;
+	bool constant SELLER = false;
+	bool constant BUYER = true;
+
+/* State Valiables */
+
+	// Orders in order of creation
+	Order[] public orders;
+
+    // Token holder accounts
+    mapping (address => uint) public balances;
+    mapping (address => uint) public lockedTokens;
+	mapping (address => uint) public etherBalances;
+	mapping (address => uint) public lockedEther;
+
+    LinkedList public priceBook = linkedLists[PRICE_BOOK];
+
+	uint public minnum = MINNUM;
+	uint public maxnum = MAXNUM;
+	
 /* Modifiers */
+
 	modifier isValidBuy(uint _bidPrice, uint _amount) {
-		if (msg.value > 0) etherBalances[msg.sender] += msg.value;
-		if ((etherBalances[msg.sender]) < (_amount * _bidPrice)
+		etherBalances[msg.sender] += msg.value;
+		if (etherBalances[msg.sender] < (_amount * _bidPrice)
 			|| _bidPrice == NULL) throw; _	// has insufficient ether.
 	}
 
@@ -346,55 +199,31 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		if (msg.sender != orders[_orderId].trader) throw; _		
 	}
 	
-	modifier hasEther(uint _ether) {
-		if (etherBalances[msg.sender] < _ether) throw; _
+	modifier hasEther(address _member, uint _ether) {
+		if (etherBalances[_member] < _ether) throw; _
 	}
 
-	
-/* Structs */
-
-	struct Order {
-		uint price; // Price in ether
-		uint amount; // Amount of tokens to trade
-		address trader; // Token holder address
+	modifier hasBalance(address _member, uint _amount) {
+		if (balances[_member] < _amount) throw; _
 	}
-	
-/* Constants */
 
-	uint constant PRICE_BOOK = 0;
-
-/* State Valiables */
-
-	// Orders in order of creation
-	Order[] public orders;
-    // Token holder accounts
-    mapping (address => uint) public balances;
-    mapping (address => uint) public unavailable;
-	mapping (address => uint) public etherBalances;
-	mapping (address => uint) public unavailableEther;
-    LinkedList public priceBook = linkedLists[PRICE_BOOK];
-
-	uint public minnum = MINNUM;
-	uint public maxnum = MAXNUM;
-	
 /* Functions */
 
-	function ITT() {
+	function ITT()
+	{
 		totalSupply = 1000000;
 		balances[msg.sender] = 1000000;
 		priceBook.nodes[HEAD].dataIndex = MINNUM;
-		priceBook.nodes[HEAD].prev = MINNUM;
-		priceBook.nodes[HEAD].next = MAXNUM;
+		priceBook.nodes[HEAD].links[PREV] = MINNUM;
+		priceBook.nodes[HEAD].links[NEXT] = MAXNUM;
 
 		priceBook.nodes[MAXNUM].dataIndex = MAXNUM;
-		priceBook.nodes[MAXNUM].prev = MINNUM;
-		priceBook.nodes[MAXNUM].next = MAXNUM;
-		priceBook.nodes[MAXNUM].dataIndex = 1;
+		priceBook.nodes[MAXNUM].links[PREV] = MINNUM;
+		priceBook.nodes[MAXNUM].links[NEXT] = MAXNUM;
 
 		priceBook.nodes[MINNUM].dataIndex = MINNUM;
-		priceBook.nodes[MINNUM].prev = MINNUM;
-		priceBook.nodes[MINNUM].next = MAXNUM;
-		priceBook.nodes[MINNUM].dataIndex = 1;
+		priceBook.nodes[MINNUM].links[PREV] = MINNUM;
+		priceBook.nodes[MINNUM].links[NEXT] = MAXNUM;
 		
 		orders.push(Order(1,1,0)); // dummy order at index 0 to allow for order validation
 	}
@@ -405,7 +234,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 //		etherBalances[msg.sender] += msg.value;
 		throw;
 	}
-		
+
 /* Functions Getters */
 
 	function getMetrics()
@@ -414,7 +243,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 			uint _balance,
 			uint _available,
 			uint _etherBalance,
-			uint _etherAvailable,
+			uint _unlockedEth,
 			uint _lowestAsk,
 			uint _highestBid,
 			uint _askVol,
@@ -422,28 +251,28 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		)
 	{
 		_balance = balances[msg.sender];
-		_available = available(msg.sender);
+		_available = unlockedTokens(msg.sender);
 		_etherBalance = etherBalances[msg.sender];
-		_etherAvailable = availableEther(msg.sender);
-		_lowestAsk = lowestAsk();
-		_highestBid = highestBid();
+		_unlockedEth = unlockedEther(msg.sender);
+		_lowestAsk = spread(ASK);
+		_highestBid = spread(BID);
 		_askVol = linkedLists[_lowestAsk].auxData;
 		_bidVol = linkedLists[_highestBid].auxData;
 		return;
 	}
 
-	function available(address _addr) public
+	function unlockedTokens(address _addr) public
 		constant
 		returns (uint)
 	{
-		return	balances[msg.sender] - unavailable[msg.sender];
+		return balances[_addr] - lockedTokens[_addr];
 	}
 	
-	function availableEther(address _addr) public
+	function unlockedEther(address _addr) public
 		constant
 		returns (uint)
 	{
-		return	etherBalances[msg.sender] - unavailableEther[msg.sender];
+		return etherBalances[_addr] - lockedEther[_addr];
 	}
 	
 	function getVolumeAtPrice(uint _price) public
@@ -457,21 +286,14 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		constant
 		returns(uint)
 	{
-		return linkedLists[_price].nodes[stepNext(_price, HEAD)].dataIndex;
+		return linkedLists[_price].nodes[step(_price, HEAD, true)].dataIndex;
 	}
 	
-	function highestBid() public
+	function spread(bool _dir) public
 		constant
 		returns(uint)
 	{
-		return priceBook.nodes[HEAD].prev;
-	}
-	
-	function lowestAsk() public
-		constant 
-		returns(uint)
-	{
-		return priceBook.nodes[HEAD].next;
+		return priceBook.nodes[HEAD].links[_dir];
 	}
 
 /* Functions Public */
@@ -482,22 +304,19 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		returns (bool _success, uint _spent, uint _ordId)
 	{
 		uint ethRemaining = _bidPrice * _amount;
-
 		_spent = ethRemaining; // tally to return unspent ether.
 		
-		while (ethRemaining > 0 && _bidPrice >= lowestAsk()){
+		while (ethRemaining > 0 && _bidPrice >= spread(ASK)){
 			// Take lowest sell order below the bid price.
 			// *ANALYSIS REQ* LOOP -How prone to gas limit failures?
-			ethRemaining = takeAsk(ethRemaining);
+			lockedEther[msg.sender] += ethRemaining;
+			ethRemaining = take(ethRemaining / _bidPrice, ASK) * _bidPrice;
 		}
 
-		if (ethRemaining > 0 && _make) {
+		if (_make && ethRemaining > 0) {
 			// Make 'Buy' order with leftover ether.
-			_ordId = orders.push(Order(_bidPrice, ethRemaining / _bidPrice, msg.sender)) - 1;
-			insertBidFIFO(_bidPrice); // Make sure price FIFO exists
-			insertAfter(_bidPrice, HEAD, _ordId); // Insert order ID into price FIFO
-			linkedLists[_bidPrice].auxData += ethRemaining / _bidPrice; // Update price volume
-			unavailableEther[msg.sender] += ethRemaining; // lock ether from withdrawal
+			_ordId = make(_bidPrice, ethRemaining / _bidPrice, BID);
+			lockedEther[msg.sender] += ethRemaining; // lock ether from withdrawal
 		}
 		_spent -= ethRemaining;
 		_success = true;
@@ -509,36 +328,26 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		returns (bool _success, uint _sold, uint _ordId)
 	{
 		uint amountRemaining = _amount;
-		while (amountRemaining > 0 && _askPrice <= highestBid())	{
+		_sold = amountRemaining;
+		while (amountRemaining > 0 && _askPrice <= spread(BID))	{
 			// Take highest bid order above the ask price.
 			// *ANALYSIS REQ* LOOP - How prone to gas limit failures?
-			amountRemaining = takeBid(amountRemaining);
-	}
+			lockedTokens[msg.sender] += amountRemaining;
+			amountRemaining = take(amountRemaining, BID);
+		}
 
-		if (amountRemaining > 0 && _make) {
+		if (_make && amountRemaining > 0) {
 			// Make 'Sell' order with remaining amount.
-			_ordId = orders.push(Order(_askPrice, _amount, msg.sender)) - 1; // Store order details
-			insertAskFIFO(_askPrice); // Make sure price FIFO exists
-			insertAfter(_askPrice, HEAD, _ordId); // Enter order ID into price FIFO
-			linkedLists[_askPrice].auxData += _amount; // Update price volume
-			unavailable[msg.sender] += _amount; // lock tokens from double sell attemps
+			_ordId = make(_askPrice, _amount, ASK); // Store order details
+			lockedTokens[msg.sender] += _amount; // lock tokens from double sell attemps
 		}
 		_sold -= _amount;
-		_success = true;
-	}
-
-	function cancelOrder(uint _orderId) public
-		isProtected
-		ownsOrder(_orderId)
-		returns (bool _success)
-	{
-		closeOrder(_orderId);
 		_success = true;
 	}
 	
 	function withdraw(uint _ether) public
 		isProtected
-		hasEther(_ether)
+		hasEther(msg.sender, _ether)
 		returns (bool _success)
 	{
 		etherBalances[msg.sender] -= _ether;
@@ -546,68 +355,105 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		_success = true;
 	}
 
-/* Functions Internal */
-		
-	function takeAsk(uint _ether)
-//		internal
-		returns (uint _ethRemaining)
+	function cancel(uint _orderId) public
+		isProtected
+		ownsOrder(_orderId)
+		returns (bool _success)
 	{
-		Order order = orders[getFirstOrderIdAtPrice(lowestAsk())];
-		uint amount = _ether / order.price;
-		if (amount < order.amount) {
-			swap(order.trader, msg.sender, order.price, amount);
-			_ethRemaining = 0;
-			order.amount -= amount;
-			return;
-		}
-		swap(order.trader, msg.sender, order.price, order.amount);
-		_ethRemaining = _ether - order.price * order.amount;
-		closeFirstOrder(lowestAsk());
-		return;		
+		closeOrder(_orderId);
+		_success = true;
 	}
-	
-	function takeBid(uint _amount)
-//		internal
+
+	// Send _value amount of tokens to address _to
+    function transfer(address _to, uint256 _value) 
+        isProtected	
+		returns (bool success)
+
+    {
+        if (unlockedTokens(msg.sender) < _value) throw;
+        balances[msg.sender] -= _value;
+        balances[_to] += _value;
+        Transfer(msg.sender, _to, _value);
+        success = true;
+    }
+
+
+    // Send _value amount of tokens from address _from to address _to
+    function transferFrom(address _from, address _to, uint256 _value)
+        isProtected
+		returns (bool success)
+    {
+        if (unlockedTokens(_from) < _value || _value < allowances[_from][msg.sender]) throw;
+        balances[_from] -= _value;
+        balances[_to] += _value;
+        Transfer(_from, _to, _value);
+        success = true;
+    }
+
+
+
+/* Functions Internal */
+
+	function make (uint _price, uint _amount, bool _swap)
+		internal
+		returns (uint _orderId)
+	{
+		_orderId = orders.push(Order(_price, _amount, msg.sender)) - 1;
+		insertFIFO(_price, _swap); // Make sure price FIFO exists
+		insert(_price, HEAD, _orderId, PREV); // Insert order ID into price FIFO
+		linkedLists[_price].auxData += _amount; // Update price volume
+		return;
+	}
+		
+	function take(uint _amount, bool _swap)
+		internal
 		returns (uint _amountRemaining)
 	{
-		Order order = orders[getFirstOrderIdAtPrice(highestBid())];
+		mapping (bool => address) traders;
+		Order order = orders[getFirstOrderIdAtPrice(spread(_swap))];
+		traders[_swap] = msg.sender;
+		traders[!_swap] = order.trader;
+
 		if (_amount < order.amount) {
-			swap(msg.sender, order.trader, order.price, _amount);
 			_amountRemaining = 0;
+			swap(traders[SELLER], traders[BUYER], order.price * _amount, _amount);
 			order.amount -= _amount;
+			linkedLists[order.price].auxData -= _amount;
 			return;
 		}
-		swap(msg.sender, order.trader, order.price, order.amount);
+		swap(traders[SELLER], traders[BUYER], order.price * _amount, order.amount);
+		
 		_amountRemaining = _amount - order.amount;
-		closeFirstOrder(highestBid());
-		return;		
+		closeFIFOOrder(spread(_swap));
+		return;
 	}
-	
-	function swap(address _seller, address _buyer, uint _price, uint _amount)
-//		internal
+
+	function swap(address _seller, address _buyer, uint _ether, uint _amount)
+		internal
+		hasBalance(_seller, _amount)
+		hasEther(_buyer, _ether)
 		returns (bool)
 	{
-		if (balances[_seller] < _amount) throw;
-		linkedLists[_price].auxData -= _amount;
 		balances[_seller] -= _amount;
-		unavailable[_seller] -= _amount;
-		etherBalances[_seller] += _price * _amount;
-		etherBalances[_buyer] -= _price * _amount;
 		balances[_buyer] += _amount;
+		etherBalances[_seller] += _ether;
+		etherBalances[_buyer] -= _ether;
+		lockedTokens[_seller] -= _amount;
+		lockedEther[_buyer] -= _ether;
 		return true;
 	}
 
-	function closeFirstOrder(uint _price)
-//		internal
+	function closeFIFOOrder(uint _price)
+		internal
 		returns (bool)
 	{
-		uint _orderId = linkedLists[_price].nodes[stepNext(_price, HEAD)].dataIndex;
+		uint _orderId = linkedLists[_price].nodes[step(_price, HEAD, NEXT)].dataIndex;
 		closeOrder(_orderId);
 		return true;
 	}
 
 	function closeOrder(uint _orderId)
-//		internal
+		internal
 		returns (bool)
 	{
 		uint price = orders[_orderId].price;
@@ -621,61 +467,37 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		return true;
 	}
 
-	function addVolume(uint _price, uint _amount) 
-		internal
-	{
-		linkedLists[_price].auxData += _amount; // update volume		
-	}
-
-	function subVolume(uint _price, uint _amount) 
-		internal
-	{
-		linkedLists[_price].auxData -= _amount; // update volume		
-	}
-
-	function seekBidInsert(uint _price)
+	function seekInsert(uint _price, bool _dir)
 		constant
-//		internal
+		internal
 		returns (uint _ret)
 	{
-		_ret = highestBid();
-		while (_price < _ret)
-			_ret = priceBook.nodes[_ret].prev;
-		return;
-	}
-
-	function seekAskInsert(uint _price)
-		constant
-//		internal
-		returns (uint _ret)
-	{
-		_ret = lowestAsk();
-		while (_price > _ret)
-			_ret = priceBook.nodes[_ret].next;
+		_ret = spread(_dir);
+		while (cmp( _price, _ret, _dir))
+			_ret = priceBook.nodes[_ret].links[_dir];
 		return;
 	}
 	
-	function insertBidFIFO (uint _price)
+	function insertFIFO (uint _price, bool _dir)
+		internal
 		returns (bool)
 	{
-		DoubleLinkNode memory _insNode = priceBook.nodes[seekBidInsert(_price)];
-		if (_insNode.next == _price) return; // exisiting FIFO
-		priceBook.nodes[_insNode.next].prev = _price;
-		linkedLists[_price].nodes[HEAD].dataIndex = 1; // set existing
-		_insNode.next = _price;
-		if (_price > priceBook.nodes[HEAD].prev) priceBook.nodes[HEAD].prev = _price;
-		return true;
-	}
-
-	function insertAskFIFO (uint _price)
-		returns (bool)
-	{
-		DoubleLinkNode memory _insNode = priceBook.nodes[seekAskInsert(_price)];
-		if (_insNode.prev == _price) return; // exisiting FIFO
-		priceBook.nodes[_insNode.prev].next = _price;
-		linkedLists[_price].nodes[HEAD].dataIndex = 1; // set existing
-		_insNode.prev = _price;
-		if (_price < priceBook.nodes[HEAD].next) priceBook.nodes[HEAD].next = _price;
+		uint insPoint = seekInsert(_price, _dir);
+		if (insPoint == _price) return; // FIFO is pre-exisiting
+		initLinkedList(10, false);
+		DoubleLinkNode a = priceBook.nodes[insPoint];
+		DoubleLinkNode b = priceBook.nodes[a.links[!_dir]];
+		DoubleLinkNode c = priceBook.nodes[_price];
+		
+		// stitch FIFO links
+		c.links[_dir] = insPoint;
+		c.links[!_dir] = a.links[!_dir];
+		b.links[_dir] = _price;
+		a.links[!_dir] = _price;
+		
+		//test for highest bid or lowest ask
+		if (cmp(priceBook.nodes[HEAD].links[_dir], _price, _dir)) 
+			priceBook.nodes[HEAD].links[_dir] = _price;
 		return true;
 	}
 }
