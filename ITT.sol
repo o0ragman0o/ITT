@@ -653,7 +653,9 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		returns (bool)
 	{
 		initLinkedList(_price, false);
-		uint a = seekInsert(_price, _dir);
+		uint a = spread(_dir);
+		while (cmp( _price, a, _dir))
+			a = lists[PRICE_BOOK].nodes[a].links[_dir];
 		insert(PRICE_BOOK, a, _price, !_dir, true); // Insert order ID into price FIFO
 		return true;
 	}
