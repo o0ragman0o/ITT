@@ -20,13 +20,14 @@ contract LibModifiers
 
 	// To lock a function from entry if it or another protected function
 	// has already been called and not yet returned.
-	modifier mtxProtect() {
-		// if(mutex) throw;
-		// else mutex = true;
+	modifier mutexProtected() {
+		if (mutex) throw;
+		else mutex = true;
 		_
-		// delete mutex;
+		delete mutex;
 		return;  // Functions require singele exit and return parameters
 	}
+
 	address owner;
 	bool public mutex;
 
@@ -118,7 +119,7 @@ contract EIP20Token is EIP20Interface
  
     // Send _value amount of tokens to address _to
     function transfer(address _to, uint256 _value) 
-        mtxProtect()
+        mutexProtected()
 		isAvailable(_value)
 		returns (bool success)
     {
@@ -132,7 +133,7 @@ contract EIP20Token is EIP20Interface
 
     // Send _value amount of tokens from address _from to address _to
     function transferFrom(address _from, address _to, uint256 _value)
-        mtxProtect
+        mutexProtected
         hasAllowance(_from, _value)
         returns (bool success)
     {
@@ -144,7 +145,7 @@ contract EIP20Token is EIP20Interface
 
     // Allow _spender to withdraw from your account, multiple times, up to the _value amount. If this function is called again it overwrites the current allowance with _value.
     function approve(address _spender, uint256 _value)
-        mtxProtect
+        mutexProtected
 		returns (bool success)        
     {
         if (balances[msg.sender] == 0) throw;
@@ -318,11 +319,28 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 /* Structs */
 
 	struct Order {
-		uint price; // Price in ether
-		uint amount; // Amount of tokens to trade
+		uint valueAmount; // Amount of Ask or Value of Bid. Price and swap are determined by FIFO
 		address trader; // Token holder address
 	}
-	
+
+	struct Trade {
+		address buyer;
+		address seller;
+		address maker;
+		address taker;
+		uint orderId;
+		uint buyValue;
+		uint buyAmount;
+		uint sellValue;
+		uint sellAmount;
+		uint makeValue;
+		uint makeAmount;
+		uint takeValue;
+		uint takeAmount;
+		bool swap;
+		bool make;
+	}
+		
 /* Constants */
 
 	uint constant PRICE_BOOK = 0;
@@ -330,6 +348,8 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 	bool constant ASK = true;
 	bool constant SELLER = false;
 	bool constant BUYER = true;
+	bool constant MAKE = false;
+	bool constant TAKE = true;
 
 /* State Valiables */
 
@@ -338,18 +358,15 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 
     // Token holder accounts
     mapping (address => uint) public balances;
-    mapping (address => uint) public lockedTokens;
 	mapping (address => uint) public etherBalances;
-	mapping (address => uint) public lockedEther;
-
-    // LinkedList public lists[PRICE_BOOK] = lists[PRICE_BOOK];
 	
 /* Modifiers */
 
 	modifier isValidBuy(uint _bidPrice, uint _amount) {
 		etherBalances[msg.sender] += msg.value;
-		if (etherBalances[msg.sender] < (_amount * _bidPrice)
-		 	|| _bidPrice == NULL) throw;
+		if (etherBalances[msg.sender] < (_amount * _bidPrice) ||
+			_bidPrice == NULL ||
+			_amount == NULL) throw;
 		_	// has insufficient ether.
 	}
 
@@ -381,6 +398,8 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 	{
 		totalSupply = 1000000;
 		balances[msg.sender] = 1000000;
+		
+		// setup pricebook spread.
 		lists[PRICE_BOOK].nodes[HEAD].dataIndex = MINNUM;
 		lists[PRICE_BOOK].nodes[HEAD].links[PREV] = MINNUM;
 		lists[PRICE_BOOK].nodes[HEAD].links[NEXT] = MAXNUM;
@@ -393,11 +412,12 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		lists[PRICE_BOOK].nodes[MINNUM].links[PREV] = MINNUM;
 		lists[PRICE_BOOK].nodes[MINNUM].links[NEXT] = HEAD;
 		
-		orders.push(Order(1,1,0)); // dummy order at index 0 to allow for order validation
+		// dummy order at index 0 to allow for order existance testing
+		orders.push(Order(1,0));
 	}
 	
 	function () 
-		mtxProtect
+		mutexProtected
 	{ 
 //		etherBalances[msg.sender] += msg.value;
 		throw;
@@ -409,9 +429,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		constant
 		returns (
 			uint _balance,
-			uint _available,
 			uint _etherBalance,
-			uint _unlockedEth,
 			uint _lowestAsk,
 			uint _highestBid,
 			uint _askVol,
@@ -419,28 +437,12 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		)
 	{
 		_balance = balances[msg.sender];
-		_available = unlockedTokens(msg.sender);
 		_etherBalance = etherBalances[msg.sender];
-		_unlockedEth = unlockedEther(msg.sender);
 		_lowestAsk = spread(ASK);
 		_highestBid = spread(BID);
 		_askVol = lists[_lowestAsk].auxData;
 		_bidVol = lists[_highestBid].auxData;
 		return;
-	}
-
-	function unlockedTokens(address _addr) public
-		constant
-		returns (uint)
-	{
-		return balances[_addr] - lockedTokens[_addr];
-	}
-	
-	function unlockedEther(address _addr) public
-		constant
-		returns (uint)
-	{
-		return etherBalances[_addr] - lockedEther[_addr];
 	}
 	
 	function getVolumeAtPrice(uint _price) public
@@ -464,57 +466,78 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		return lists[PRICE_BOOK].nodes[HEAD].links[_dir];
 	}
 
+	function toPrice (uint _value, uint _amount) public
+		constant
+		returns (uint)
+	{
+		return _value / _amount;
+	}
+
+	function toAmount (uint _value, uint _price) public
+		constant
+		returns (uint)
+	{
+		return _value / _price;
+	}
+
+	function toValue (uint _price, uint _amount) public
+		constant
+		returns (uint)
+	{
+		return _price * _amount;
+	}
+
 /* Functions Public */
 
-	function buy (uint _bidPrice, uint _amount, bool _make) public
-		mtxProtect
+	function buy (uint _value, uint _amount, bool _make) public
+		mutexProtected
 		isValidBuy(_bidPrice, _amount)
-		returns (bool _success, uint _spent, uint _ordId)
+		returns (bool _success)
 	{
-		uint ethRemaining = _bidPrice * _amount;
-		_spent = ethRemaining; // tally to return unspent ether.
-		
-		while (ethRemaining > 0 && _bidPrice >= spread(ASK)){
-			// Take lowest sell order below the bid price.
-			// *ANALYSIS REQ* LOOP -How prone to gas limit failures?
-			lockedEther[msg.sender] += ethRemaining;
-			ethRemaining = take(ethRemaining / _bidPrice, ASK) * _bidPrice;
-		}
+		Trade memory tradeMsg;
+		tradeMsg.buyer = msg.sender;
+		tradeMsg.takeAmount = _amount;
+		tradeMsg.takeValue = _value;
+		tradeMsg.buyValue = etherBalances[msg.sender];
+		tradeMsg.buyAmount = balances[msg.sender];
+		tradeMsg.swap = BID;
+		tradeMsg.make = _make;
+		runTrade(tradeMsg);
+	}
+	// struct Trade {
+	// 	address buyer;
+	// 	address seller;
+	//	address maker; // trader from prior make order
+	//  address taker; // msg.sender
+	//	uint orderId; // id of order in book
+	// 	uint buyValue; // ether to spend
+	// 	uint buyAmount; // accumulated tokens
+	// 	uint sellValue; // accumulated ether
+	// 	uint sellAmount; // tokens to sellAmount
+	// 	uint makeValue; // value of booked order
+	// 	uint makeAmount; // amount in booked order
+	// 	uint takeValue; // value of order
+	// 	uint takeAmount;  // amount in order
+	// }
 
-		if (_make && ethRemaining > 0) {
-			// Make 'Buy' order with leftover ether.
-			_ordId = make(_bidPrice, ethRemaining / _bidPrice, BID);
-			lockedEther[msg.sender] += ethRemaining; // lock ether from withdrawal
-		}
-		_spent -= ethRemaining;
-		_success = true;
+	function sell (uint _value, uint _amount, bool _make) public
+		mutexProtected
+		isValidSell(_bidPrice, _amount)
+		returns (bool _success)
+	{
+		Trade memory tradeMsg;
+		tradeMsg.seller = msg.sender;
+		tradeMsg.takeAmount = _amount;
+		tradeMsg.takeValue = _value;
+		tradeMsg.sellValue = etherBalances[msg.sender];
+		tradeMsg.sellAmount = balances[msg.sender];
+		tradeMsg.swap = ASK;
+		tradeMsg.make = _make;
+		runTrade(tradeMsg);
 	}
 
-	function sell (uint _askPrice, uint _amount, bool _make) public 
-		mtxProtect
-		isValidSell(_askPrice, _amount)
-		returns (bool _success, uint _sold, uint _ordId)
-	{
-		uint amountRemaining = _amount;
-		_sold = amountRemaining;
-		while (amountRemaining > 0 && _askPrice <= spread(BID))	{
-			// Take highest bid order above the ask price.
-			// *ANALYSIS REQ* LOOP - How prone to gas limit failures?
-			lockedTokens[msg.sender] += amountRemaining;
-			amountRemaining = take(amountRemaining, BID);
-		}
-
-		if (_make && amountRemaining > 0) {
-			// Make 'Sell' order with remaining amount.
-			_ordId = make(_askPrice, amountRemaining, ASK); // Store order details
-			lockedTokens[msg.sender] += _amount; // lock tokens from double sell attemps
-		}
-		_sold -= _amount;
-		_success = true;
-	}
-	
 	function withdraw(uint _ether) public
-		mtxProtect
+		mutexProtected
 		hasEther(msg.sender, _ether)
 		returns (bool _success)
 	{
@@ -524,7 +547,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 	}
 
 	function cancel(uint _orderId) public
-		mtxProtect
+		mutexProtected
 		ownsOrder(_orderId)
 		returns (bool _success)
 	{
@@ -532,84 +555,141 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		_success = true;
 	}
 
-	// Send _value amount of tokens to address _to
-    function transfer(address _to, uint256 _value) 
-        mtxProtect	
-		returns (bool success)
-
-    {
-        if (unlockedTokens(msg.sender) < _value) throw;
-        balances[msg.sender] -= _value;
-        balances[_to] += _value;
-        Transfer(msg.sender, _to, _value);
-        success = true;
-    }
-
-
-    // Send _value amount of tokens from address _from to address _to
-    function transferFrom(address _from, address _to, uint256 _value)
-        mtxProtect
-		returns (bool success)
-    {
-        if (unlockedTokens(_from) < _value || _value < allowances[_from][msg.sender]) throw;
-        balances[_from] -= _value;
-        balances[_to] += _value;
-        Transfer(_from, _to, _value);
-        success = true;
-    }
-
-
-
 /* Functions Internal */
 
-	function make (uint _price, uint _amount, bool _swap)
-		// internal
-		returns (uint _orderId)
+	function runTrade(Trade tradeMsg)
+		internal
+		returns (bool success_)
 	{
-		_orderId = orders.push(Order(_price, _amount, msg.sender)) - 1;
-		if (!isValidKey(_price, 0)) 
-			insertFIFO(_price, _swap); // Make sure price FIFO exists
-		insert(_price, HEAD, _orderId, PREV, false); // Insert order ID into price FIFO
-		lists[_price].auxData += _amount; // Update price volume
-		return;
-	}
-		
-	function take(uint _amount, bool _swap)
-		// internal
-		returns (uint _amountRemaining)
-	{
-		mapping (bool => address) traders;
-		Order order = orders[getFirstOrderIdAtPrice(spread(_swap))];
-		traders[_swap] = msg.sender;
-		traders[!_swap] = order.trader;
-
-		if (_amount < order.amount) {
-			_amountRemaining = 0;
-			swap(traders[SELLER], traders[BUYER], order.price * _amount, _amount);
-			order.amount -= _amount;
-			lists[order.price].auxData -= _amount;
-			return;
+		take(tradeMsg);
+		tradeMsg.maker = msg.sender;
+		tradeMsg.makeValue = tradeMsg.takeValue;
+		tradeMsg.makeAmount = tradeMsg.takeAmount;
+		if (tradeMsg.make) {
+			if (tradeMsg.swap)
+				if(tradeMsg.makeAmount > 0)	make(tradeMsg);
+			else
+				if(tradeMsg.makeValue > 0)	make(tradeMsg);
 		}
-		swap(traders[SELLER], traders[BUYER], order.price * _amount, order.amount);
-		
-		_amountRemaining = _amount - order.amount;
-		closeFIFOOrder(spread(_swap));
+		balances[tradeMsg.taker] += tradeMsg.makeAmount;
+		etherBalances[tradeMsg.taker] += tradeMsg.makeValue;
+	}
+
+	function take(Trade tradeMsg)
+		internal
+		returns (bool success_)
+	{
+		tradeMsg.makePrice = spread(tradeMsg.swap);
+		tradeMsg.takePrice = toPrice(tradeMsg.takeValue, tradeMsg.takeAmount);
+		if (cmp(takePrice, makePrice, tradeMsg.swap)
+			// nothing to take
+			return;
+
+		tradeMsg.orderId = getFirstOrderIdAtPrice(makePrice);
+		tradeMsg.makeValue = orders[tradeMsg.orderId]value;
+		tradeMsg.makeAmount = orders[tradeMsg.orderId].amount;
+		tradeMsg.maker = orders[tradeMsg.orderId].trader;
+		if(tradeMsg.swap {			
+			// Taker is selling
+			if (tradeMsg.takeAmount < tradeMsg.makeAmount) {
+				takePartial(tradeMsg);
+			} else {
+				takeFull(tradeMsg);
+			}
+
+		} else {
+			// Taker is buying
+			if (tradeMsg.takeValue < tradeMsg.makeValue) {
+				takePartial(tradeMsg);
+			} else {
+				takeFull(tradeMsg);
+			}
+		}
+		return;
+	}
+	
+	function takeFull(Trade tradeMsg)
+		internal
+		returns (bool success_)
+	{
+		if(tradeMsg.swap {			
+			// Taker is selling			
+			balances[order.trader] += tradeMsg.makeAmount;	
+			tradeMsg.takeAmount -= tradeMsg.makeAmount;		
+			tradeMsg.takeValue += tradeMsg.makeValue;
+			closeFIFOOrder(tradeMsg.makePrice);
+			if (tradeMsg.takeAmount > 0) {
+				// *** ANALYSIS REQ *** check recursion gas limit;
+				// recurse to take next order.
+				take(tradeMsg);
+			}
+		} else {
+			// Taker is buying
+			etherbalances[order.trader] += tradeMsg.makeValue;
+			tradeMsg.takeValue -= tradeMsg.makeValue;
+			tradeMsg.takeAmount += tradeMsg.makeAmount;
+			closeFIFOOrder(tradeMsg.makePrice);
+			if (tradeMsg.takeValue > 0) {
+				// *** ANALYSIS REQ *** check recursion gas limit;
+				// recurse to take next order.
+				take(tradeMsg);
+			}
+		}
 		return;
 	}
 
-	function swap(address _seller, address _buyer, uint _ether, uint _amount)
-		// internal
-		hasBalance(_seller, _amount)
-		hasEther(_buyer, _ether)
-		returns (bool)
+	function takePartial(Trade tradeMsg)
+		internal
+		returns (bool success_)
 	{
-		balances[_seller] -= _amount;
-		balances[_buyer] += _amount;
-		etherBalances[_seller] += _ether;
-		etherBalances[_buyer] -= _ether;
-		lockedTokens[_seller] -= _amount;
-		lockedEther[_buyer] -= _ether;
-		return true;
+		if(tradeMsg.swap {			
+			// Taker is selling			
+			balances[order.trader] += tradeMsg.takeAmount;
+			orders[taskMsg.orderId].amount -= tradeMsg.takeAmount;
+			tradeMsg.takeAmount = 0;
+			tradeMsg.takeValue += tradeMsg.makeValue;
+		} else {
+			// Taker is buying
+			etherbalances[order.trader] += tradeMsg.takeValue;
+			orders[taskMsg.orderId].value -= tradeMsg.takeValue
+			tradeMsg.takeValue = 0;
+			tradeMsg.takeAmount += tradeMsg.makeAmount;
+		}
+		return;
+	}
+	// struct Trade {
+	// 	address buyer;
+	// 	address seller;
+	//	address maker; // trader from prior make order
+	//  address taker; // msg.sender
+	//	uint orderId; // id of order in book
+	// 	uint buyValue; // ether to spend
+	// 	uint buyAmount; // accumulated tokens
+	// 	uint sellValue; // accumulated ether
+	// 	uint sellAmount; // tokens to sellAmount
+	// 	uint makeValue; // value of booked order
+	// 	uint makeAmount; // amount in booked order
+	// 	uint takeValue; // value of order
+	// 	uint takeAmount;  // amount in order
+	// }
+
+	function make (Trade tradeMsg) 
+		internal
+		returns (uint orderId_)
+	{
+		if (tradeMsg.swap) {
+			balances[msg.sender] -= tradeMsg.takeAmount;
+			orderId_ = orders.push(Order(tradeMsg.takeAmount, msg.sender)) - 1;
+		} else {
+			etherBalances[msg.sender] -= tradeMsg.takeValue;
+			orderId_ = orders.push(Order(tradeMsg.takeValue, msg.sender)) - 1;
+		}
+
+		uint price = toPrice(tradeMsg.takeValue, tradeMsg.takeAmount);
+		if (!isValidKey(price, 0)) insertFIFO(price, _swap); // Make sure price FIFO exists
+		insert(price, HEAD, orderId_, PREV, false); // Insert order ID into price FIFO
+		lists[price].auxData += tradeMsg.takeAmount; // Update price volume
+		return;
 	}
 
 	function closeFIFOOrder(uint _price)
@@ -635,6 +715,12 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		}
 		delete orders[_orderId];
 		return true;
+	}
+
+	function closeTrade (Trade tradeMsg)
+		internal
+	{
+		balances[tradeMsg] -= tradeMtx[B_VAL]
 	}
 
 	function seekInsert(uint _price, bool _dir)
