@@ -6,6 +6,8 @@ var itt = contracts['ITT'].contract;
 var Swap = {BUY:0, SELL:1};
 var bids = [];
 var asks = [];
+var BID = false;
+var ASK = true;
 
 function acc() {
 	return web3.eth.accounts[document.getElementById('accId').value];
@@ -14,14 +16,12 @@ function acc() {
 function update() {
 	var metrics = itt.getMetrics({from:acc()});
 	document.getElementById('accAddr').innerText = acc();
-	document.getElementById('balance').innerText = 'of ' + metrics[0];
-	document.getElementById('available').innerText = metrics[1];
-	document.getElementById('ethBalance').innerText = 'of ' + metrics[2];
-	document.getElementById('ethAvailable').innerText = metrics[3];
-	document.getElementById('lowestAsk').innerText = metrics[4];
-	document.getElementById('highestBid').innerText = metrics[5];
-	document.getElementById('askVol').innerText = itt.getVolumeAtPrice(metrics[4]);
-	document.getElementById('bidVol').innerText = itt.getVolumeAtPrice(metrics[5]);
+	document.getElementById('balance').innerText = metrics[0];
+	document.getElementById('ethBalance').innerText = metrics[1];
+	document.getElementById('lowestAsk').innerText = metrics[4] == 0 ? 'No Orders' : metrics[2];
+	document.getElementById('highestBid').innerText = metrics[5] == 0 ? 'No Orders' : metrics[3];
+	document.getElementById('askVol').innerText = metrics[4];
+	document.getElementById('bidVol').innerText = metrics[5];
 }
 
 function getBidBook() {
@@ -66,8 +66,8 @@ function withdraw() {
 <table>
 	<tr><td>Account ID</td><td><input id="accId" type="number" value='0' onchange='update()'></td></tr>
 	<tr><td>Account Addr</td><td id='accAddr' colspan=2></td></tr>
-	<tr><td>Balance</td> <td id='available'></td><td id='balance'></td></tr>
-	<tr><td>Ether</td><td id='ethAvailable'></td><td id='ethBalance'></td><td><button onclick='withdraw()' type='button'>Withdraw</button></td></tr>
+	<tr><td>Balance</td><td id='balance'></td></tr>
+	<tr><td>Ether</td><td id='ethBalance'></td><td><button onclick='withdraw()' type='button'>Withdraw</button></td></tr>
 	<tr><td></td><td>Price</td><td>Volume</td></tr>
 	<tr><td>Ask</td><td id='lowestAsk'></td><td id="askVol"></td></tr>
 	<tr><td>Bid</td><td id='highestBid'></td><td id="bidVol"></td></tr>

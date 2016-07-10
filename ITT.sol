@@ -319,24 +319,16 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 /* Structs */
 
 	struct Order {
-		uint valueAmount; // Amount of Ask or Value of Bid. Price and swap are determined by FIFO
+		// Price and swap are determined by FIFO price
+		uint valueAmount; // Token amount of Ask or ether Value of Bid. 
 		address trader; // Token holder address
 	}
 
-	struct Trade {
-		address buyer;
-		address seller;
-		address maker;
-		address taker;
+	struct TradeMessage {
+		uint amount;
+		uint value;
+		uint price;
 		uint orderId;
-		uint buyValue;
-		uint buyAmount;
-		uint sellValue;
-		uint sellAmount;
-		uint makeValue;
-		uint makeAmount;
-		uint takeValue;
-		uint takeAmount;
 		bool swap;
 		bool make;
 	}
@@ -346,10 +338,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 	uint constant PRICE_BOOK = 0;
 	bool constant BID = false;
 	bool constant ASK = true;
-	bool constant SELLER = false;
-	bool constant BUYER = true;
-	bool constant MAKE = false;
-	bool constant TAKE = true;
+	uint8 constant MAXDEPTH = 5; // prevent out of gas on take recursion
 
 /* State Valiables */
 
@@ -357,7 +346,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 	Order[] public orders;
 
     // Token holder accounts
-    mapping (address => uint) public balances;
+    // mapping (address => uint) public balances; // inherited
 	mapping (address => uint) public etherBalances;
 	
 /* Modifiers */
@@ -371,7 +360,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 	}
 
 	modifier isValidSell(uint _askPrice, uint _amount) {
-		if (_amount > balances[msg.sender] - lockedTokens[msg.sender] ||
+		if (_amount > balances[msg.sender] ||
 			_askPrice == NULL ||
 			_amount == NULL) throw;
 		_
@@ -389,6 +378,12 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 
 	modifier hasBalance(address _member, uint _amount) {
 		// if (balances[_member] < _amount) throw;
+		_
+	}
+	
+	modifier notTooDeep(uint8 depth) {
+		if (depth == 0) return;
+		depth--;
 		_
 	}
 
@@ -487,54 +482,45 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		return _price * _amount;
 	}
 
-/* Functions Public */
+// /* Functions Public */
 
-	function buy (uint _value, uint _amount, bool _make) public
+	function buy (uint _amount, uint _bidPrice, bool _make)
 		mutexProtected
 		isValidBuy(_bidPrice, _amount)
 		returns (bool _success)
 	{
-		Trade memory tradeMsg;
-		tradeMsg.buyer = msg.sender;
-		tradeMsg.takeAmount = _amount;
-		tradeMsg.takeValue = _value;
-		tradeMsg.buyValue = etherBalances[msg.sender];
-		tradeMsg.buyAmount = balances[msg.sender];
-		tradeMsg.swap = BID;
-		tradeMsg.make = _make;
-		runTrade(tradeMsg);
-	}
-	// struct Trade {
-	// 	address buyer;
-	// 	address seller;
-	//	address maker; // trader from prior make order
-	//  address taker; // msg.sender
-	//	uint orderId; // id of order in book
-	// 	uint buyValue; // ether to spend
-	// 	uint buyAmount; // accumulated tokens
-	// 	uint sellValue; // accumulated ether
-	// 	uint sellAmount; // tokens to sellAmount
-	// 	uint makeValue; // value of booked order
-	// 	uint makeAmount; // amount in booked order
-	// 	uint takeValue; // value of order
-	// 	uint takeAmount;  // amount in order
-	// }
+		TradeMessage memory tmsg;
+		tmsg.value = toValue(_bidPrice, _amount);
+		tmsg.price = _bidPrice;
+		tmsg.swap = BID;
+		tmsg.make = _make;
 
-	function sell (uint _value, uint _amount, bool _make) public
+		takeAsks(tmsg);
+		makeBid(tmsg);
+
+		balances[msg.sender] += tmsg.amount;
+		etherBalances[msg.sender] -= tmsg.value;
+	}
+
+	function sell (uint _amount, uint _askPrice, bool _make)
 		mutexProtected
-		isValidSell(_bidPrice, _amount)
+		isValidSell(_askPrice, _amount)
 		returns (bool _success)
 	{
-		Trade memory tradeMsg;
-		tradeMsg.seller = msg.sender;
-		tradeMsg.takeAmount = _amount;
-		tradeMsg.takeValue = _value;
-		tradeMsg.sellValue = etherBalances[msg.sender];
-		tradeMsg.sellAmount = balances[msg.sender];
-		tradeMsg.swap = ASK;
-		tradeMsg.make = _make;
-		runTrade(tradeMsg);
+		TradeMessage memory tmsg;
+		//tmsg.value = toValue(_amount, _askPrice);
+		tmsg.amount = _amount;
+		tmsg.price = _askPrice;
+		tmsg.swap = ASK;
+		tmsg.make = _make;
+
+		takeBids(tmsg);
+		makeAsk(tmsg);
+
+		balances[msg.sender] -= _amount - tmsg.amount;
+		etherBalances[msg.sender] += tmsg.value;
 	}
+
 
 	function withdraw(uint _ether) public
 		mutexProtected
@@ -551,178 +537,177 @@ contract ITT is EIP20Token, MultiCircularLinkedList
 		ownsOrder(_orderId)
 		returns (bool _success)
 	{
-		closeOrder(_orderId);
+//		closeOrder(_orderId);
 		_success = true;
 	}
 
-/* Functions Internal */
+// /* Functions Internal */
 
-	function runTrade(Trade tradeMsg)
+	function takeAsks(TradeMessage tmsg)
 		internal
-		returns (bool success_)
+		returns (TradeMessage)
 	{
-		take(tradeMsg);
-		tradeMsg.maker = msg.sender;
-		tradeMsg.makeValue = tradeMsg.takeValue;
-		tradeMsg.makeAmount = tradeMsg.takeAmount;
-		if (tradeMsg.make) {
-			if (tradeMsg.swap)
-				if(tradeMsg.makeAmount > 0)	make(tradeMsg);
-			else
-				if(tradeMsg.makeValue > 0)	make(tradeMsg);
-		}
-		balances[tradeMsg.taker] += tradeMsg.makeAmount;
-		etherBalances[tradeMsg.taker] += tradeMsg.makeValue;
-	}
-
-	function take(Trade tradeMsg)
-		internal
-		returns (bool success_)
-	{
-		tradeMsg.makePrice = spread(tradeMsg.swap);
-		tradeMsg.takePrice = toPrice(tradeMsg.takeValue, tradeMsg.takeAmount);
-		if (cmp(takePrice, makePrice, tradeMsg.swap)
+		if (cmp(tmsg.price, spread(ASK), BID))
 			// nothing to take
+			return tmsg;
+		takeFullAsk(tmsg, MAXDEPTH);
+		takePartialAsk(tmsg);
+		return tmsg;
+	}	
+
+	function takeFullAsk(TradeMessage tmsg, uint8 depth)
+		// * NOTE * This function can recurse by design.
+		internal
+		notTooDeep(depth)
+//		returns (TradeMessage)
+	{
+//		if (depth == 0) return tmsg;
+		if (depth == 0) return;
+		uint curPrice = spread(ASK);
+		Order ord = orders[getFirstOrderIdAtPrice(curPrice)];
+		if (tmsg.value < ord.valueAmount)
+			// insufficient funds for full take
+//			return tmsg;
 			return;
-
-		tradeMsg.orderId = getFirstOrderIdAtPrice(makePrice);
-		tradeMsg.makeValue = orders[tradeMsg.orderId]value;
-		tradeMsg.makeAmount = orders[tradeMsg.orderId].amount;
-		tradeMsg.maker = orders[tradeMsg.orderId].trader;
-		if(tradeMsg.swap {			
-			// Taker is selling
-			if (tradeMsg.takeAmount < tradeMsg.makeAmount) {
-				takePartial(tradeMsg);
-			} else {
-				takeFull(tradeMsg);
-			}
-
-		} else {
-			// Taker is buying
-			if (tradeMsg.takeValue < tradeMsg.makeValue) {
-				takePartial(tradeMsg);
-			} else {
-				takeFull(tradeMsg);
-			}
-		}
-		return;
+		tmsg.value -= ord.valueAmount;
+		tmsg.amount += toAmount(ord.valueAmount, curPrice);
+		closeFIFOAskOrder(curPrice);
+		takeFullAsk(tmsg, depth);
+//		return tmsg;
 	}
-	
-	function takeFull(Trade tradeMsg)
+
+	function takePartialAsk(TradeMessage tmsg)
 		internal
-		returns (bool success_)
+//		returns (TradeMessage)
 	{
-		if(tradeMsg.swap {			
-			// Taker is selling			
-			balances[order.trader] += tradeMsg.makeAmount;	
-			tradeMsg.takeAmount -= tradeMsg.makeAmount;		
-			tradeMsg.takeValue += tradeMsg.makeValue;
-			closeFIFOOrder(tradeMsg.makePrice);
-			if (tradeMsg.takeAmount > 0) {
-				// *** ANALYSIS REQ *** check recursion gas limit;
-				// recurse to take next order.
-				take(tradeMsg);
-			}
-		} else {
-			// Taker is buying
-			etherbalances[order.trader] += tradeMsg.makeValue;
-			tradeMsg.takeValue -= tradeMsg.makeValue;
-			tradeMsg.takeAmount += tradeMsg.makeAmount;
-			closeFIFOOrder(tradeMsg.makePrice);
-			if (tradeMsg.takeValue > 0) {
-				// *** ANALYSIS REQ *** check recursion gas limit;
-				// recurse to take next order.
-				take(tradeMsg);
-			}
-		}
-		return;
+		uint curPrice = spread(ASK);
+		Order ord = orders[getFirstOrderIdAtPrice(curPrice)];
+		tmsg.amount += toAmount(tmsg.value, curPrice);
+		ord.valueAmount -= tmsg.value;
+		etherBalances[ord.trader] += tmsg.value;
+		tmsg.value = 0;
+//		return tmsg;
 	}
 
-	function takePartial(Trade tradeMsg)
+	function makeBid(TradeMessage tmsg)
 		internal
-		returns (bool success_)
+//		returns (TradeMessage)
 	{
-		if(tradeMsg.swap {			
-			// Taker is selling			
-			balances[order.trader] += tradeMsg.takeAmount;
-			orders[taskMsg.orderId].amount -= tradeMsg.takeAmount;
-			tradeMsg.takeAmount = 0;
-			tradeMsg.takeValue += tradeMsg.makeValue;
-		} else {
-			// Taker is buying
-			etherbalances[order.trader] += tradeMsg.takeValue;
-			orders[taskMsg.orderId].value -= tradeMsg.takeValue
-			tradeMsg.takeValue = 0;
-			tradeMsg.takeAmount += tradeMsg.makeAmount;
-		}
-		return;
-	}
-	// struct Trade {
-	// 	address buyer;
-	// 	address seller;
-	//	address maker; // trader from prior make order
-	//  address taker; // msg.sender
-	//	uint orderId; // id of order in book
-	// 	uint buyValue; // ether to spend
-	// 	uint buyAmount; // accumulated tokens
-	// 	uint sellValue; // accumulated ether
-	// 	uint sellAmount; // tokens to sellAmount
-	// 	uint makeValue; // value of booked order
-	// 	uint makeAmount; // amount in booked order
-	// 	uint takeValue; // value of order
-	// 	uint takeAmount;  // amount in order
-	// }
-
-	function make (Trade tradeMsg) 
-		internal
-		returns (uint orderId_)
-	{
-		if (tradeMsg.swap) {
-			balances[msg.sender] -= tradeMsg.takeAmount;
-			orderId_ = orders.push(Order(tradeMsg.takeAmount, msg.sender)) - 1;
-		} else {
-			etherBalances[msg.sender] -= tradeMsg.takeValue;
-			orderId_ = orders.push(Order(tradeMsg.takeValue, msg.sender)) - 1;
-		}
-
-		uint price = toPrice(tradeMsg.takeValue, tradeMsg.takeAmount);
-		if (!isValidKey(price, 0)) insertFIFO(price, _swap); // Make sure price FIFO exists
-		insert(price, HEAD, orderId_, PREV, false); // Insert order ID into price FIFO
-		lists[price].auxData += tradeMsg.takeAmount; // Update price volume
-		return;
+		uint orderId = orders.push(Order(tmsg.value, msg.sender)) - 1;
+		uint price = toPrice(tmsg.value, tmsg.amount);
+		tmsg.value = 0;
+		if (!isValidKey(price, 0)) insertFIFO(price, BID); // Make sure price FIFO exists
+		insert(price, HEAD, orderId, PREV, false); // Insert order ID into price FIFO
+		lists[price].auxData += tmsg.amount; // Update price volume
+//		return tmsg;
 	}
 
-	function closeFIFOOrder(uint _price)
+	function closeFIFOAskOrder(uint _price)
 		// internal
 		returns (bool)
 	{
 		uint _orderId = lists[_price].nodes[step(_price, HEAD, NEXT)].dataIndex;
-		closeOrder(_orderId);
+		closeAskOrder(_orderId, _price);
 		return true;
 	}
 
-	function closeOrder(uint _orderId)
+	function closeAskOrder(uint _orderId, uint _price)
 		// internal
 		returns (bool)
 	{
-		uint price = orders[_orderId].price;
-		remove(price, _orderId);
-		lists[price].auxData -= orders[_orderId].amount;
-		if (lists[price].size == 0) {
-			remove(PRICE_BOOK, price);
-			delete lists[price].nodes[0];
-			delete lists[price];
+		remove(_price, _orderId);
+		lists[_price].auxData -= toAmount(_price, orders[_orderId].valueAmount);
+		if (lists[_price].size == 0) {
+			remove(PRICE_BOOK, _price);
+			delete lists[_price].nodes[0];
+			delete lists[_price];
 		}
 		delete orders[_orderId];
 		return true;
 	}
 
-	function closeTrade (Trade tradeMsg)
+	function takeBids(TradeMessage tmsg)
 		internal
+//		returns (TradeMessage)
 	{
-		balances[tradeMsg] -= tradeMtx[B_VAL]
+		if (cmp(tmsg.price, spread(BID), ASK))
+			// nothing to take
+//			return tmsg;
+			return;
+		takeFullBid(tmsg, MAXDEPTH);
+		takePartialBid(tmsg);
+//		return tmsg;
+	}	
+
+	function takeFullBid(TradeMessage tmsg, uint8 depth)
+		// * NOTE * This function can recurse by design.
+		internal
+		notTooDeep(depth)
+//		returns (TradeMessage)
+	{
+		uint curPrice = spread(BID);
+		Order ord = orders[getFirstOrderIdAtPrice(curPrice)];
+		if (tmsg.value < ord.valueAmount)
+			// insufficient funds for full take
+//			return tmsg;
+			return ;
+		tmsg.value += ord.valueAmount;
+		tmsg.amount -= toAmount(ord.valueAmount, curPrice);
+		closeFIFOAskOrder(curPrice);
+		takeFullAsk(tmsg, depth);
+//		return tmsg;
 	}
 
+	function takePartialBid(TradeMessage tmsg)
+		internal
+//		returns (TradeMessage)
+	{
+		uint curPrice = spread(BID);
+		Order ord = orders[getFirstOrderIdAtPrice(curPrice)];
+		tmsg.amount -= toAmount(tmsg.value, curPrice);
+		ord.valueAmount += tmsg.value;
+		etherBalances[ord.trader] += tmsg.value;
+		tmsg.value = 0;
+//		return tmsg;
+	}
+
+	function makeAsk(TradeMessage tmsg)
+		internal
+//		returns (TradeMessage)
+	{
+		uint orderId = orders.push(Order(tmsg.amount, msg.sender)) - 1;
+		uint price = toPrice(tmsg.value, tmsg.amount);
+		tmsg.amount = 0;
+		if (!isValidKey(price, 0)) insertFIFO(price, ASK); // Make sure price FIFO exists
+		insert(price, HEAD, orderId, PREV, false); // Insert order ID into price FIFO
+		lists[price].auxData += tmsg.amount; // Update price volume
+//		return tmsg;
+	}
+
+	function closeFIFOBidOrder(uint _price)
+		// internal
+		returns (bool)
+	{
+		uint _orderId = lists[_price].nodes[step(_price, HEAD, NEXT)].dataIndex;
+		closeAskOrder(_orderId, _price);
+		return true;
+	}
+
+	function closeBidOrder(uint _orderId, uint _price)
+		// internal
+		returns (bool)
+	{
+		remove(_price, _orderId);
+		lists[_price].auxData -= toAmount(_price, orders[_orderId].valueAmount);
+		if (lists[_price].size == 0) {
+			remove(PRICE_BOOK, _price);
+			delete lists[_price].nodes[0];
+			delete lists[_price];
+		}
+		delete orders[_orderId];
+		return true;
+	}
+	
 	function seekInsert(uint _price, bool _dir)
 		constant
 		// internal
