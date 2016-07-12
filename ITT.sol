@@ -17,29 +17,31 @@ contract LibModifiers
         // if (msg.sender != owner) throw;
         _
     }
+	
+    address public owner;
 
-    // To lock a function from entry if it or another protected function
-    // has already been called and not yet returned.
+	// Prevents a function from accepting sent ether
+	modifier noEther(){
+		if (msg.value > 0) throw;
+		_
+	}
+
+    // To lock a contracts mutex protected functions from entry if it or another
+	// protected function has not yet returned.
+	// Protected functions must have only one point of exit.
+	// Protected functions cannot use the `return` keyword
+	// Protected functions return values must be through return parameters.
     modifier mutexProtected() {
         if (mutex) throw;
         else mutex = true;
         _
-        delete mutex;
-        return;  // Functions require singele exit and return parameters
+        mutex = false;
+        return;  // Functions require single exit and return parameters
     }
 
-    address owner;
     bool public mutex;
 
-    function cmpEq (uint a, uint b, bool _dir)
-        // !_dir Tests a <= b
-        // _dir  Tests a >= b
-        constant
-        returns (bool)
-    {
-        return (a==b) || ((a < b) != _dir);
-    }
-
+	// Parametric comparitor for > or <
     function cmp (uint a, uint b, bool _dir)
         // !_dir Tests a < b
         // _dir  Tests a > b
@@ -48,6 +50,16 @@ contract LibModifiers
     {
         if (_dir) return a > b;
         else return a < b;
+    }
+
+	// Parametric comparitor for >= or <=
+    function cmpEq (uint a, uint b, bool _dir)
+        // !_dir Tests a <= b
+        // _dir  Tests a >= b
+        constant
+        returns (bool)
+    {
+        return (a==b) || ((a < b) != _dir);
     }
 }
 
@@ -65,7 +77,7 @@ contract EIP20Interface is LibModifiers
     string public symbol;
     uint public decimalPlaces;
 
-/* State variable Accessor Functions (leave commented)
+/* State variable Accessor Functions (for reference - leave commented)
 
     function balances(address tokenHolder) returns (uint);
     function allowanaces (address tokenHolders, address proxy, uint allowance) returns (uint);
@@ -74,16 +86,23 @@ contract EIP20Interface is LibModifiers
     function decimalPlaces() returns(uint);
 */
 
+/* Events */
+    // Triggered when tokens are transferred.
+    event Transfer(address indexed _from, address indexed _to, uint256 _value);
+
+    // Triggered whenever approve(address _spender, uint256 _value) is called.
+    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+
 /* Modifiers */
     
     modifier isAvailable(uint _amount) {
-        // if (_amount < balances[msg.sender]) throw;
+        if (_amount < balances[msg.sender]) throw;
         _
     }
     
     modifier hasAllowance(address _from, uint _amount) {
-        // if (_amount > allowances[_from][msg.sender] ||
-        //    _amount > balances[_from]) throw;
+        if (_amount > allowances[_from][msg.sender] ||
+           _amount > balances[_from]) throw;
         _
     }
 
@@ -97,16 +116,13 @@ contract EIP20Interface is LibModifiers
 
     // Allow _spender to withdraw from your account, multiple times, up to the _value amount. If this function is called again it overwrites the current allowance with _value.
     function approve(address _spender, uint256 _value) returns (bool success);
-
-    // Triggered when tokens are transferred.
-    event Transfer(address indexed _from, address indexed _to, uint256 _value);
-
-    // Triggered whenever approve(address _spender, uint256 _value) is called.
-    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
 }
 
 contract EIP20Token is EIP20Interface
 {
+
+/* Events */
+	
 /* Modifiers */
 
 /* Structs */
@@ -329,6 +345,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
         uint value;
         uint price;
         uint spent;
+        uint bought;
         uint sold;
         uint orderId;
         bool swap;
@@ -350,7 +367,14 @@ contract ITT is EIP20Token, MultiCircularLinkedList
     // Token holder accounts
     // mapping (address => uint) public balances; // inherited
     mapping (address => uint) public etherBalances;
-    
+
+/* Events */
+
+    event Ask (uint indexed price, uint amount, uint indexed orderId, address indexed trader);
+    event Bid (uint indexed price, uint amount, uint indexed orderId, address indexed trader);
+    event Bought (uint indexed price, uint amount, uint indexed orderId, address seller, address indexed buyer);
+    event Sold (uint indexed price, uint amount, uint indexed orderId, address indexed seller, address buyer);
+
 /* Modifiers */
 
     modifier isValidBuy(uint _bidPrice, uint _amount) {
@@ -392,6 +416,11 @@ contract ITT is EIP20Token, MultiCircularLinkedList
         if (cmp(tmsg.price, spread(!tmsg.swap), tmsg.swap)) return;
         _
     }
+	
+	modifier isMake(TradeMessage tmsg) {
+		if (!tmsg.make) return;
+		_
+	}
 	    
 /* Functions */
 
@@ -494,6 +523,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
         returns (bool success_)
     {
         TradeMessage memory tmsg;
+        tmsg.amount = _amount;
         tmsg.value = toValue(_bidPrice, _amount);
         tmsg.price = _bidPrice;
         tmsg.swap = BID;
@@ -502,7 +532,7 @@ contract ITT is EIP20Token, MultiCircularLinkedList
         takeAsks(tmsg, MAXDEPTH);
         makeBid(tmsg);
 
-        balances[msg.sender] += tmsg.amount;
+        balances[msg.sender] += tmsg.bought;
         etherBalances[msg.sender] += msg.value - tmsg.spent;
     }
 
@@ -556,27 +586,29 @@ contract ITT is EIP20Token, MultiCircularLinkedList
         takeAvailable(tmsg)
     {
         uint bestPrice = spread(!tmsg.swap);
-        uint orderId = getFirstOrderIdAtPrice(bestPrice);
-        Order order = orders[orderId];
+        tmsg.orderId = getFirstOrderIdAtPrice(bestPrice);
+        Order order = orders[tmsg.orderId];
         uint orderValue = toValue(bestPrice, order.amount);
-        if (tmsg.value >= orderValue) {
+        if (tmsg.amount >= order.amount) {
             // Take full amount
-            tmsg.value -= orderValue;
             tmsg.spent += orderValue;
-            tmsg.amount += order.amount;
+            tmsg.bought += order.amount;
+            tmsg.amount -= order.amount;
             etherBalances[order.trader] += orderValue;
-            closeOrder(bestPrice, orderId);
+            Bought (tmsg.price, order.amount, tmsg.orderId, order.trader, msg.sender);
+            closeOrder(bestPrice, tmsg.orderId);
             takeAsks(tmsg, _depth); // recurse
+            return;
         }
-        if (tmsg.value == 0) return;
-        // insufficient funds for full take
-        uint buyAmount = toAmount(tmsg.value, bestPrice);
-        tmsg.amount += buyAmount;
-        order.amount -= buyAmount;
-        lists[bestPrice].auxData -= buyAmount;
-        tmsg.spent += tmsg.value;
-        etherBalances[order.trader] += tmsg.value;
-        tmsg.value = 0;
+        if (tmsg.amount == 0) return;
+        // Insufficient funds, take partial ask.
+        order.amount -= tmsg.amount;
+        tmsg.bought += tmsg.amount;
+        etherBalances[order.trader] += toValue(bestPrice, tmsg.amount);
+        lists[bestPrice].auxData -= tmsg.amount;
+        tmsg.spent += toValue(bestPrice, tmsg.amount);
+        Bought (tmsg.price, tmsg.amount, tmsg.orderId, order.trader, msg.sender);
+        tmsg.amount = 0;
         return;
 }
 
@@ -587,8 +619,8 @@ contract ITT is EIP20Token, MultiCircularLinkedList
         takeAvailable(tmsg)
     {
         uint bestPrice = spread(!tmsg.swap);
-        uint orderId = getFirstOrderIdAtPrice(bestPrice);
-        Order order = orders[orderId];
+        tmsg.orderId = getFirstOrderIdAtPrice(bestPrice);
+        Order order = orders[tmsg.orderId];
         uint orderValue = toValue(bestPrice, order.amount);
         if (tmsg.amount >= order.amount) {
             // Take full amount 
@@ -596,11 +628,13 @@ contract ITT is EIP20Token, MultiCircularLinkedList
             tmsg.amount -= order.amount;
             balances[order.trader] += order.amount;
             tmsg.sold += order.amount;
-            closeOrder(bestPrice, orderId);
+            Sold (bestPrice, order.amount, tmsg.orderId, msg.sender, order.trader);
+            closeOrder(bestPrice, tmsg.orderId);
             takeBids(tmsg, _depth); // recurse;
+            return;
         }
         if(tmsg.amount == 0) return;
-        // insufficient funds for full take
+        // Insufficient funds, take partial bid.
         uint sellValue = toValue(bestPrice, tmsg.amount);
         tmsg.value += sellValue;
         order.amount -= sellValue;
@@ -608,33 +642,38 @@ contract ITT is EIP20Token, MultiCircularLinkedList
         lists[bestPrice].auxData -= tmsg.amount;
         tmsg.sold += tmsg.amount;
         tmsg.amount = 0;
+        Sold (bestPrice, tmsg.amount, tmsg.orderId, msg.sender, order.trader);
         return;
     }
 
     function makeAsk(TradeMessage tmsg)
         internal
-    {
-        if (tmsg.amount == 0) return;
-        uint orderId = orders.push(Order(tmsg.amount, msg.sender)) - 1;
-        uint price = tmsg.price;
-        if (!isValidKey(price, 0)) insertFIFO(price, ASK); // Make sure price FIFO exists
-        insert(price, HEAD, orderId, PREV, true); // Insert order ID into price FIFO
-        lists[price].auxData += tmsg.amount; // Update price volume
+		isMake(tmsg)
+	{
+        make(tmsg);
         tmsg.sold += tmsg.amount;
+        Ask (tmsg.price, tmsg.amount, tmsg.orderId, msg.sender);
         tmsg.amount = 0;
     }
 
     function makeBid(TradeMessage tmsg)
         internal
+		isMake(tmsg)
     {
-        if (tmsg.value == 0) return;
-		uint price = tmsg.price;
-        uint amount = toAmount(tmsg.value, price);
-        uint orderId = orders.push(Order(amount, msg.sender)) - 1;
-        if (!isValidKey(price, 0)) insertFIFO(price, BID); // Make sure price FIFO exists
-        insert(price, HEAD, orderId, PREV, true); // Insert order ID into price FIFO
-        lists[price].auxData += amount; // Update price volume
-        tmsg.spent += tmsg.value;
+        make(tmsg);
+        tmsg.spent += toValue(tmsg.price, tmsg.amount);
+        Bid (tmsg.price, tmsg.amount, tmsg.orderId, msg.sender);
+        tmsg.amount = 0;
+    }
+
+    function make(TradeMessage tmsg)
+        internal
+    {
+        if (tmsg.amount == 0) return;
+        tmsg.orderId = orders.push(Order(tmsg.amount, msg.sender)) - 1;
+        if (!isValidKey(tmsg.price, 0)) insertFIFO(tmsg.price, tmsg.swap); // Make sure price FIFO exists
+        insert(tmsg.price, HEAD, tmsg.orderId, PREV, true); // Insert order ID into price FIFO
+        lists[tmsg.price].auxData += tmsg.amount; // Update price volume
     }
 
     function closeOrder(uint _price, uint _orderId)

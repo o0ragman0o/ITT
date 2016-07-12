@@ -3,6 +3,7 @@
 <head>
 <script type='text/javascript'>
 var itt = contracts['ITT'].contract;
+var metrics = [];
 var Swap = {BUY:0, SELL:1};
 var bids = [];
 var asks = [];
@@ -14,7 +15,7 @@ function acc() {
 }
 	
 function update() {
-	var metrics = itt.getMetrics({from:acc()});
+	metrics = itt.getMetrics({from:acc()});
 	document.getElementById('accAddr').innerText = acc();
 	document.getElementById('balance').innerText = metrics[0];
 	document.getElementById('ethBalance').innerText = metrics[1];
@@ -46,9 +47,10 @@ function buy() {
 	var price = document.getElementById('price').value;
 	var amount = document.getElementById('amount').value;
 	var make = document.getElementById('make').checked;
-	var reqEther = price * amount;
+	var reqEther = price * amount - metrics[1];
+	reqEther = reqEther < 0 ? 0 : reqEther;
 	orderNum = itt.buy(price, amount, make,
-					   {from:acc(), value:price * amount});
+					   {from:acc(), value:price * amount - metrics[1]});
 	update();
 }
 	
