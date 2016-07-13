@@ -13,7 +13,7 @@ contract MultiCircularLinkedList {
     // Generic double linked list node.
     struct DoubleLinkNode {
         uint dataIndex;
-        mapping (bool => uint128) links;
+        mapping (bool => uint) links;
     }
     
     // Generic circular linked list parameters. Head is static index 0.
@@ -186,7 +186,7 @@ contract CLL is MultiCircularLinkedList
 	
 	function push(uint num) public
 	{
-		insert (list, HEAD, num, true, PREV);
+		insertNewNode (list, HEAD, num, num, PREV);
 	}
 
 	function pull() public returns (uint)
