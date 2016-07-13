@@ -1,37 +1,66 @@
-contract LibModifiers
+contract Misc
 {
+
+/* Constants */
+
+    uint constant NULL = 0;
+    bool constant LT = false;
+    bool constant GT = true;
+
 /* Modifiers */
 
-	uint constant NULL = 0;
-	uint constant MINNUM = 1;
-	uint constant MAXNUM = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
-	bool constant LT = false;
-	bool constant GT = true;
+    // To throw call not made by owner
+    modifier isOwner() {
+        // if (msg.sender != owner) throw;
+        _
+    }
+	
+    address public owner;
 
-	// To throw call not made by owner
-	modifier isOwner() {
-		if (msg.sender != owner) throw;
+	// Prevents a function from accepting sent ether
+	modifier noEther(){
+		if (msg.value > 0) throw;
 		_
 	}
 
-	// To lock a function from entry if it or another protected function
-	// has already been called and not yet returned.
-	modifier isProtected() {
-		if(mutex) throw;
-		else mutex = true;
-		_
-		delete mutex;
-		return;  // Functions require singele exit and return parameters
-	}
-	address owner;
-	bool mutex;
+    // To lock a contracts mutex protected functions from entry if it or another
+	// protected function has not yet returned.
+	// Protected functions must have only one point of exit.
+	// Protected functions cannot use the `return` keyword
+	// Protected functions return values must be through return parameters.
+    modifier mutexProtected() {
+        if (mutex) throw;
+        else mutex = true;
+        _
+        mutex = false;
+        return;
+    }
 
-	function cmp (uint a, uint b, bool _dir)
-		// !_dir Tests a <= b
-		// _dir  Tests a >= b
-		constant
-		returns (bool)
-	{
-		return (a==b) || ((a < b) != _dir);
-	}
+    /// @returns Entry state.
+    bool public mutex;
+
+/* Functions */
+
+	// Parametric comparitor for > or <
+    // !_dir Tests a < b
+    // _dir  Tests a > b
+    function cmp (uint a, uint b, bool _dir)
+    	public
+        constant
+        returns (bool)
+    {
+        if (_dir) return a > b;
+        else return a < b;
+    }
+
+	// Parametric comparitor for >= or <=
+    // !_dir Tests a <= b
+    // _dir  Tests a >= b
+     function cmpEq (uint a, uint b, bool _dir)
+    	public
+        constant
+        returns (bool)
+    {
+        return (a==b) || ((a < b) != _dir);
+    }
 }
