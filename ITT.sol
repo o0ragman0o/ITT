@@ -1,18 +1,25 @@
 import './misc.sol';
-import './MCLL.sol';
+//import 'https://github.com/o0ragman0o/libCLLi/libCLLi.sol';
+import './libCLLi.sol';
 import './EIP20.sol';
 
 
 contract ITTInterface
 {
+
+    using LibCLLi for LibCLLi.LinkedList;
+
 /* Constants */
 
     uint constant PRICE_BOOK = 0;
+	uint constant HEAD = 0;
     uint constant MINNUM = 1;
     uint constant MAXNUM = 2**128;
+	bool constant PREV = false;
+	bool constant NEXT = true;
     bool constant BID = false;
     bool constant ASK = true;
-    uint8 constant MAXDEPTH = 5; // prevent out of gas on take recursion
+    uint constant MAXDEPTH = 100000; // remaning gas required to prevent out of gas on take recursion
 
     struct Order {
         // Price and swap are determined by FIFO price
@@ -37,8 +44,11 @@ contract ITTInterface
     // Orders in order of creation
     Order[] public orders;
 
+
+    LibCLLi.LinkedList public priceBook;
+    mapping (uint => LibCLLi.LinkedList) public orderFIFOs;
+
     // Token holder accounts
-    // mapping (address => uint) public balances; // inherited
     mapping (address => uint) public etherBalances;
 
 /* Events */
@@ -87,7 +97,7 @@ contract ITTInterface
 
 
 /* Intrinsically Tradable Token code */ 
-contract ITT is Misc, ITTInterface, MultiCircularLinkedList, EIP20Token
+contract ITT is Misc, ITTInterface, EIP20Token
 {
     
 /* Structs */
@@ -121,9 +131,8 @@ contract ITT is Misc, ITTInterface, MultiCircularLinkedList, EIP20Token
         _
     }
     
-    modifier recurseLimit(uint8 depth) {
-        if (depth == 0) return;
-        depth--;
+    modifier limitRecurse() {
+        if (msg.gas < MAXDEPTH) return;
         _
     }
 
@@ -156,18 +165,19 @@ contract ITT is Misc, ITTInterface, MultiCircularLinkedList, EIP20Token
         decimalPlaces = 0;
         symbol = 'ITT';
         
-        // setup pricebook spread.
-        lists[PRICE_BOOK].nodes[HEAD].dataIndex = MINNUM;
-        lists[PRICE_BOOK].nodes[HEAD].links[PREV] = MINNUM;
-        lists[PRICE_BOOK].nodes[HEAD].links[NEXT] = MAXNUM;
+        // setup pricebook and maximum spread.10
+        priceBook.init(true);
+        priceBook.nodes[HEAD].dataIndex = MINNUM;
+        priceBook.nodes[HEAD].links[PREV] = MINNUM;
+        priceBook.nodes[HEAD].links[NEXT] = MAXNUM;
 
-        lists[PRICE_BOOK].nodes[MAXNUM].dataIndex = MAXNUM;
-        lists[PRICE_BOOK].nodes[MAXNUM].links[PREV] = HEAD;
-        lists[PRICE_BOOK].nodes[MAXNUM].links[NEXT] = MAXNUM;
+        priceBook.nodes[MAXNUM].dataIndex = MAXNUM;
+        priceBook.nodes[MAXNUM].links[PREV] = HEAD;
+        priceBook.nodes[MAXNUM].links[NEXT] = MAXNUM;
 
-        lists[PRICE_BOOK].nodes[MINNUM].dataIndex = MINNUM;
-        lists[PRICE_BOOK].nodes[MINNUM].links[PREV] = MINNUM;
-        lists[PRICE_BOOK].nodes[MINNUM].links[NEXT] = HEAD;
+        priceBook.nodes[MINNUM].dataIndex = MINNUM;
+        priceBook.nodes[MINNUM].links[PREV] = MINNUM;
+        priceBook.nodes[MINNUM].links[NEXT] = HEAD;
         
         // dummy order at index 0 to allow for order existance testing
         orders.push(Order(1,0));
@@ -195,8 +205,8 @@ contract ITT is Misc, ITTInterface, MultiCircularLinkedList, EIP20Token
         etherBalance_ = etherBalances[msg.sender];
         lowestAsk_ = spread(ASK);
         highestBid_ = spread(BID);
-        askVol_ = lists[lowestAsk_].auxData;
-        bidVol_ = lists[highestBid_].auxData;
+        askVol_ = orderFIFOs[lowestAsk_].auxData;
+        bidVol_ = orderFIFOs[highestBid_].auxData;
 		decimalPlaces_ = decimalPlaces;
 		symbol_ = symbol;
         return;
@@ -206,22 +216,36 @@ contract ITT is Misc, ITTInterface, MultiCircularLinkedList, EIP20Token
         constant
         returns (uint)
     {
-        return lists[_price].auxData;
+        return orderFIFOs[_price].auxData;
     }
     
     function getFirstOrderIdAtPrice(uint _price) public
         constant
         returns(uint)
     {
-        return lists[_price].nodes[step(_price, HEAD, true)].dataIndex;
+        return orderFIFOs[_price].step(HEAD, true);
     }
     
     function spread(bool _dir) public
         constant
         returns(uint)
     {
-        return lists[PRICE_BOOK].nodes[HEAD].links[_dir];
+		return priceBook.step(HEAD, _dir);
     }
+	
+	function getNode(uint _list, uint _node)
+		constant
+		returns(uint[3])
+	{
+		if (_list == 0) return [
+			priceBook.nodes[_node].links[PREV],
+			priceBook.nodes[_node].links[NEXT],
+			priceBook.nodes[_node].dataIndex];
+		else return [
+			orderFIFOs[_list].nodes[_node].links[PREV],
+		 	orderFIFOs[_list].nodes[_node].links[NEXT],
+			orderFIFOs[_list].nodes[_node].dataIndex];
+	}
 
     function toPrice (uint _value, uint _amount) public
         constant
@@ -259,11 +283,12 @@ contract ITT is Misc, ITTInterface, MultiCircularLinkedList, EIP20Token
         tmsg.swap = BID;
         tmsg.make = _make;
 
-        takeAsks(tmsg, MAXDEPTH);
+        takeAsks(tmsg);
         makeBid(tmsg);
 
         balances[msg.sender] += tmsg.bought;
         etherBalances[msg.sender] += msg.value - tmsg.spent;
+		success_ = true;
     }
 
     function sell (uint _askPrice, uint _amount, bool _make)
@@ -278,11 +303,12 @@ contract ITT is Misc, ITTInterface, MultiCircularLinkedList, EIP20Token
         tmsg.swap = ASK;
         tmsg.make = _make;
 
-        takeBids(tmsg, MAXDEPTH);
+        takeBids(tmsg);
         makeAsk(tmsg);
 
         balances[msg.sender] += tmsg.amount - tmsg.sold;
         etherBalances[msg.sender] += tmsg.value;
+		success_ = true;
     }
 
     function withdraw(uint _ether)
@@ -312,10 +338,10 @@ contract ITT is Misc, ITTInterface, MultiCircularLinkedList, EIP20Token
 
 /* Functions Internal */
 
-    function takeAsks(TradeMessage tmsg, uint8 _depth)
+    function takeAsks(TradeMessage tmsg)
         // * NOTE * This function can recurse by design.
         internal
-        recurseLimit(_depth)
+        limitRecurse
         takeAvailable(tmsg)
     {
         uint bestPrice = spread(!tmsg.swap);
@@ -330,7 +356,7 @@ contract ITT is Misc, ITTInterface, MultiCircularLinkedList, EIP20Token
             etherBalances[order.trader] += orderValue;
             Bought (tmsg.price, order.amount, tmsg.orderId, order.trader, msg.sender);
             closeOrder(bestPrice, tmsg.orderId);
-            takeAsks(tmsg, _depth); // recurse
+            takeAsks(tmsg); // recurse
             return;
         }
         if (tmsg.amount == 0) return;
@@ -338,17 +364,17 @@ contract ITT is Misc, ITTInterface, MultiCircularLinkedList, EIP20Token
         order.amount -= tmsg.amount;
         tmsg.bought += tmsg.amount;
         etherBalances[order.trader] += toValue(bestPrice, tmsg.amount);
-        lists[bestPrice].auxData -= tmsg.amount;
+        orderFIFOs[bestPrice].auxData -= tmsg.amount;
         tmsg.spent += toValue(bestPrice, tmsg.amount);
         Bought (tmsg.price, tmsg.amount, tmsg.orderId, order.trader, msg.sender);
         tmsg.amount = 0;
         return;
 }
 
-    function takeBids(TradeMessage tmsg, uint8 _depth)
+    function takeBids(TradeMessage tmsg)
         // * NOTE * This function can recurse by design.
         internal
-        recurseLimit(_depth)
+        limitRecurse
         takeAvailable(tmsg)
     {
         uint bestPrice = spread(!tmsg.swap);
@@ -363,7 +389,7 @@ contract ITT is Misc, ITTInterface, MultiCircularLinkedList, EIP20Token
             tmsg.sold += order.amount;
             Sold (bestPrice, order.amount, tmsg.orderId, msg.sender, order.trader);
             closeOrder(bestPrice, tmsg.orderId);
-            takeBids(tmsg, _depth); // recurse;
+            takeBids(tmsg); // recurse;
             return;
         }
         if(tmsg.amount == 0) return;
@@ -372,7 +398,7 @@ contract ITT is Misc, ITTInterface, MultiCircularLinkedList, EIP20Token
         tmsg.value += sellValue;
         order.amount -= sellValue;
         balances[order.trader] += tmsg.amount;
-        lists[bestPrice].auxData -= tmsg.amount;
+        orderFIFOs[bestPrice].auxData -= tmsg.amount;
         tmsg.sold += tmsg.amount;
         tmsg.amount = 0;
         Sold (bestPrice, tmsg.amount, tmsg.orderId, msg.sender, order.trader);
@@ -404,21 +430,21 @@ contract ITT is Misc, ITTInterface, MultiCircularLinkedList, EIP20Token
     {
         if (tmsg.amount == 0) return;
         tmsg.orderId = orders.push(Order(tmsg.amount, msg.sender)) - 1;
-        if (!keyExists(tmsg.price, 0)) insertFIFO(tmsg.price, tmsg.swap); // Make sure price FIFO exists
-        insertNewNode(tmsg.price, HEAD, tmsg.orderId, tmsg.orderId, PREV); // Insert order ID into price FIFO
-        lists[tmsg.price].auxData += tmsg.amount; // Update price volume
+        if (orderFIFOs[tmsg.price].newNodeKey == NULL) insertFIFO(tmsg.price, tmsg.swap); // Make sure price FIFO index exists
+        orderFIFOs[tmsg.price].pushTail(tmsg.orderId); // Insert order ID into price FIFO
+        orderFIFOs[tmsg.price].auxData += tmsg.amount; // Update price volume
     }
 
     function closeOrder(uint _price, uint _orderId)
         internal
         returns (bool)
     {
-        remove(_price, _orderId);
-        lists[_price].auxData -= orders[_orderId].amount;
-        if (lists[_price].size == 0) {
-            remove(PRICE_BOOK, _price);
-            delete lists[_price].nodes[0];
-            delete lists[_price];
+        orderFIFOs[_price].remove(_orderId);
+        orderFIFOs[_price].auxData -= orders[_orderId].amount;
+        if (orderFIFOs[_price].size == 0) {
+            priceBook.remove(_price);
+            delete orderFIFOs[_price].nodes[0];
+            delete orderFIFOs[_price];
         }
         delete orders[_orderId];
         return true;
@@ -431,7 +457,7 @@ contract ITT is Misc, ITTInterface, MultiCircularLinkedList, EIP20Token
     {
         _ret = spread(_dir);
         while (cmp( _price, _ret, _dir))
-            _ret = lists[PRICE_BOOK].nodes[_ret].links[_dir];
+            _ret = priceBook.nodes[_ret].links[_dir];
         return;
     }
     
@@ -439,11 +465,11 @@ contract ITT is Misc, ITTInterface, MultiCircularLinkedList, EIP20Token
         internal
         returns (bool)
     {
-        initLinkedList(_price, false);
+        orderFIFOs[_price].init(true);
         uint a = spread(_dir);
         while (cmp( _price, a, _dir))
-            a = lists[PRICE_BOOK].nodes[a].links[_dir];
-		insertNewNode(PRICE_BOOK, a, _price, _price, !_dir); // Insert order ID into price FIFO
+            a = priceBook.nodes[a].links[_dir];
+		priceBook.insertNewNode(a, _price, !_dir); // Insert order ID into price FIFO
         return true;
     }
 }
