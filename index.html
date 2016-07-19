@@ -9,6 +9,7 @@ var bids = [];
 var asks = [];
 var BID = false;
 var ASK = true;
+var decimalPlaces;
 
 function acc() {
 	return web3.eth.accounts[document.getElementById('accId').value];
@@ -16,13 +17,16 @@ function acc() {
 	
 function update() {
 	metrics = itt.getMetrics({from:acc()});
+	document.getElementById('sym').innerText = metrics[7];
+	decimalPlaces = Math.pow(10, metrics[6]);	
 	document.getElementById('accAddr').innerText = acc();
-	document.getElementById('balance').innerText = metrics[0];
+	document.getElementById('balance').innerText = metrics[0]/decimalPlaces;
 	document.getElementById('ethBalance').innerText = metrics[1];
 	document.getElementById('lowestAsk').innerText = metrics[4] == 0 ? 'No Orders' : metrics[2];
 	document.getElementById('highestBid').innerText = metrics[5] == 0 ? 'No Orders' : metrics[3];
 	document.getElementById('askVol').innerText = metrics[4];
 	document.getElementById('bidVol').innerText = metrics[5];
+	
 }
 
 function getBidBook() {
@@ -36,7 +40,7 @@ function getBidBook() {
 	
 function sell() {
 	var price = document.getElementById('price').value;
-	var amount = document.getElementById('amount').value;
+	var amount = document.getElementById('amount').value * decimalPlaces;
 	var make = document.getElementById('make').checked;
 	orderNum = itt.sell(price, amount, make,
 								 {from:acc()});
@@ -45,7 +49,7 @@ function sell() {
 
 function buy() {
 	var price = document.getElementById('price').value;
-	var amount = document.getElementById('amount').value;
+	var amount = document.getElementById('amount').value * decimalPlaces;
 	var make = document.getElementById('make').checked;
 	var reqEther = price * amount - metrics[1];
 	reqEther = reqEther < 0 ? 0 : reqEther;
@@ -63,7 +67,7 @@ function withdraw() {
 </script>
 </head>
 <body bgcolor='#E6E6FA' onload='update()'>
-	<h3>Intrinsically Tradable Token</h3>
+	<h3>Intrinsically Tradable Token - <span id="sym"></span>/ETH</h3>
 	<button onclick='update()' type='button'>Refresh</button>
 <table>
 	<tr><td>Account ID</td><td><input id="accId" type="number" value='0' onchange='update()'></td></tr>
