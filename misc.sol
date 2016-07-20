@@ -63,4 +63,11 @@ contract Misc
     {
         return (a==b) || ((a < b) != _dir);
     }
+
+	function changeOwner(address _newOwner)
+		public
+		mutexProtected
+		isOwner {
+		owner = _newOwner;
+	}
 }

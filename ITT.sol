@@ -1,7 +1,7 @@
 import './misc.sol';
-//import 'https://github.com/o0ragman0o/libCLLi/libCLLi.sol';
+import 'https://github.com/o0ragman0o/libCLLi/libCLLi.sol';
 import './libCLLi.sol';
-import './EIP20.sol';
+import 'https://github.com/o0ragman0o/EIP20/EIP20.sol';
 
 
 contract ITTInterface
@@ -117,17 +117,17 @@ contract ITT is Misc, ITTInterface, EIP20Token
     }
 
     modifier ownsOrder(uint _orderId) {
-        // if (msg.sender != orders[_orderId].trader) throw;
+        if (msg.sender != orders[_orderId].trader) throw;
         _       
     }
     
     modifier hasEther(address _member, uint _ether) {
-        // if (etherBalances[_member] < _ether) throw;
+        if (etherBalances[_member] < _ether) throw;
         _
     }
 
     modifier hasBalance(address _member, uint _amount) {
-        // if (balances[_member] < _amount) throw;
+        if (balances[_member] < _amount) throw;
         _
     }
     
@@ -271,10 +271,26 @@ contract ITT is Misc, ITTInterface, EIP20Token
 /* Functions Public */
 
     function buy (uint _bidPrice, uint _amount, bool _make)
-		public
+        public
         mutexProtected
-        isValidBuy(_bidPrice, _amount)
         returns (bool success_)
+    {
+        buyIntl(_bidPrice, _amount, _make);
+        success_ = true;
+    }
+
+    function sell (uint _askPrice, uint _amount, bool _make)
+        public
+        mutexProtected
+        returns (bool success_)
+    {
+        sellIntl(_askPrice, _amount, _make);
+        success_ = true;
+    }
+
+    function buyIntl (uint _bidPrice, uint _amount, bool _make)
+		internal
+        isValidBuy(_bidPrice, _amount)
     {
         TradeMessage memory tmsg;
         tmsg.amount = _amount;
@@ -288,14 +304,11 @@ contract ITT is Misc, ITTInterface, EIP20Token
 
         balances[msg.sender] += tmsg.bought;
         etherBalances[msg.sender] += msg.value - tmsg.spent;
-		success_ = true;
     }
 
-    function sell (uint _askPrice, uint _amount, bool _make)
-		public
-        mutexProtected
+    function sellIntl (uint _askPrice, uint _amount, bool _make)
+        internal
         isValidSell(_askPrice, _amount)
-        returns (bool success_)
     {
         TradeMessage memory tmsg;
         tmsg.amount = _amount;
@@ -308,7 +321,6 @@ contract ITT is Misc, ITTInterface, EIP20Token
 
         balances[msg.sender] += tmsg.amount - tmsg.sold;
         etherBalances[msg.sender] += tmsg.value;
-		success_ = true;
     }
 
     function withdraw(uint _ether)
