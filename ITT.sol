@@ -272,6 +272,7 @@ contract ITT is Misc, ITTInterface, EIP20Token
 
     function buy (uint _bidPrice, uint _amount, bool _make)
         public
+// <<<<<<< HEAD
         mutexProtected
         returns (bool success_)
     {
@@ -321,6 +322,22 @@ contract ITT is Misc, ITTInterface, EIP20Token
 
         balances[msg.sender] += tmsg.amount - tmsg.sold;
         etherBalances[msg.sender] += tmsg.value;
+// =======
+//         mutexProtected
+//         returns (bool success_)
+//     {
+//         buyIntl(_bidPrice, _amount, _make);
+//         success_ = true;
+//     }
+
+//     function sell (uint _askPrice, uint _amount, bool _make)
+//         public
+//         mutexProtected
+//         returns (bool success_)
+//     {
+//         sellIntl(_askPrice, _amount, _make);
+//         success_ = true;
+// >>>>>>> development
     }
 
     function withdraw(uint _ether)
@@ -349,6 +366,41 @@ contract ITT is Misc, ITTInterface, EIP20Token
     }
 
 /* Functions Internal */
+
+    function buyIntl (uint _bidPrice, uint _amount, bool _make)
+        internal
+        isValidBuy(_bidPrice, _amount)
+    {
+        TradeMessage memory tmsg;
+        tmsg.amount = _amount;
+        tmsg.value = toValue(_bidPrice, _amount);
+        tmsg.price = _bidPrice;
+        tmsg.swap = BID;
+        tmsg.make = _make;
+
+        takeAsks(tmsg);
+        makeBid(tmsg);
+
+        balances[msg.sender] += tmsg.bought;
+        etherBalances[msg.sender] += msg.value - tmsg.spent;
+    }
+
+    function sellIntl (uint _askPrice, uint _amount, bool _make)
+        internal
+        isValidSell(_askPrice, _amount)
+    {
+        TradeMessage memory tmsg;
+        tmsg.amount = _amount;
+        tmsg.price = _askPrice;
+        tmsg.swap = ASK;
+        tmsg.make = _make;
+
+        takeBids(tmsg);
+        makeAsk(tmsg);
+
+        balances[msg.sender] += tmsg.amount - tmsg.sold;
+        etherBalances[msg.sender] += tmsg.value;
+    }
 
     function takeAsks(TradeMessage tmsg)
         // * NOTE * This function can recurse by design.
@@ -381,7 +433,7 @@ contract ITT is Misc, ITTInterface, EIP20Token
         Bought (tmsg.price, tmsg.amount, tmsg.orderId, order.trader, msg.sender);
         tmsg.amount = 0;
         return;
-}
+    }
 
     function takeBids(TradeMessage tmsg)
         // * NOTE * This function can recurse by design.
