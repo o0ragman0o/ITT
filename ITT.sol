@@ -1,7 +1,24 @@
-import './misc.sol';
-import 'https://github.com/o0ragman0o/libCLLi/libCLLi.sol';
-import './libCLLi.sol';
-import 'https://github.com/o0ragman0o/EIP20/EIP20.sol';
+/*
+file:   ITT.sol
+ver:    0.1.0-alpha
+updated:29-Aug-2016
+author: Darryl Morris
+email:  o0ragman0o AT gmail.com
+
+An ERC20 compliant token with currency
+exchange functionality here called an 'Intrinsically Tradable
+Token' (ITT).
+
+This software is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU lesser General Public License for more details.
+<http://www.gnu.org/licenses/>.
+*/
+
+import 'misc.sol';
+import 'LibCLLi.sol';
+import 'ERC20.sol';
 
 
 contract ITTInterface
@@ -11,7 +28,6 @@ contract ITTInterface
 
 /* Constants */
 
-    uint constant PRICE_BOOK = 0;
 	uint constant HEAD = 0;
     uint constant MINNUM = 1;
     uint constant MAXNUM = 2**128;
@@ -19,14 +35,19 @@ contract ITTInterface
 	bool constant NEXT = true;
     bool constant BID = false;
     bool constant ASK = true;
-    uint constant MAXDEPTH = 100000; // remaning gas required to prevent out of gas on take recursion
+    // minimum gas required to prevent out of gas on 'take' recursion
+    uint constant MINRECURSGAS = 100000; 
 
+    // Minimal storage requirments for an order.
+    // Order price and swap direction are determined by the price FIFO.
     struct Order {
-        // Price and swap are determined by FIFO price
-        uint amount; // Token amount of Ask or ether Value of Bid. 
-        address trader; // Token holder address
+        // Token amount to buy or sell.
+        uint amount;
+        // Token holder address of order maker.
+        address trader;
     }
 
+    // An internal message structure for staging state mutations during order processing
     struct TradeMessage {
         uint amount;
         uint value;
@@ -44,11 +65,21 @@ contract ITTInterface
     // Orders in order of creation
     Order[] public orders;
 
-
+    // Using the Circular Linked List library for the price book.
+    // The priceBook holds a list of prices of live orders used to 
+    // lookup FIFOs in the orderFIFO's mapping.
+    // Bid prices are inserted previous to the HEAD in decending order
+    // Ask prices are inserted after the HEAD in ascending order
     LibCLLi.LinkedList public priceBook;
+
+    // All order indecies are placed in a mapping of FIFO's
+    // (which are circular linked lists) under the key of the order price.
+    // Make orders are inserted previous to the head.
+    // Take orders are removed next from the head.
     mapping (uint => LibCLLi.LinkedList) public orderFIFOs;
 
-    // Token holder accounts
+    // Token holders also require a withdrawable ether balance to store sales
+    // from tokens and change from buy orders and cancelations.
     mapping (address => uint) public etherBalances;
 
 /* Events */
@@ -97,7 +128,7 @@ contract ITTInterface
 
 
 /* Intrinsically Tradable Token code */ 
-contract ITT is Misc, ITTInterface, EIP20Token
+contract ITT is Misc, ITTInterface, ERC20Token
 {
     
 /* Structs */
@@ -132,12 +163,10 @@ contract ITT is Misc, ITTInterface, EIP20Token
     }
     
     modifier limitRecurse() {
-        if (msg.gas < MAXDEPTH) return;
+        if (msg.gas < MINRECURSGAS) return;
         _
     }
 
-        // !_dir Tests a < b
-        // _dir  Tests a > b
     modifier takeAvailable(TradeMessage tmsg) {
         if (cmp(tmsg.price, spread(!tmsg.swap), tmsg.swap)) return;
         _
@@ -153,19 +182,14 @@ contract ITT is Misc, ITTInterface, EIP20Token
 	    
 /* Functions */
 
-//    function ITT(uint _totalSupply, uint8 _decimalPlaces, string _symbol, address _owner)
-    function ITT()
+    function ITT(uint _totalSupply, uint8 _decimalPlaces, string _symbol, address _owner)
     {
-        // totalSupply = _totalSupply;
-        // balances[_owner] = _totalSupply;
-        // decimalPlaces = _decimalPlaces;
-        // symbol = _symbol;
-        totalSupply = 100;
-        balances[msg.sender] = totalSupply;
-        decimalPlaces = 0;
-        symbol = 'ITT';
+        totalSupply = _totalSupply;
+        balances[_owner] = _totalSupply;
+        decimalPlaces = _decimalPlaces;
+        symbol = _symbol;
         
-        // setup pricebook and maximum spread.10
+        // setup pricebook and maximum spread.
         priceBook.init(true);
         priceBook.nodes[HEAD].dataIndex = MINNUM;
         priceBook.nodes[HEAD].links[PREV] = MINNUM;
@@ -179,7 +203,7 @@ contract ITT is Misc, ITTInterface, EIP20Token
         priceBook.nodes[MINNUM].links[PREV] = MINNUM;
         priceBook.nodes[MINNUM].links[NEXT] = HEAD;
         
-        // dummy order at index 0 to allow for order existance testing
+        // dummy order at index 0 to allow for orderID >= 1 existance testing
         orders.push(Order(1,0));
     }
     
@@ -272,7 +296,6 @@ contract ITT is Misc, ITTInterface, EIP20Token
 
     function buy (uint _bidPrice, uint _amount, bool _make)
         public
-// <<<<<<< HEAD
         mutexProtected
         returns (bool success_)
     {
@@ -287,57 +310,6 @@ contract ITT is Misc, ITTInterface, EIP20Token
     {
         sellIntl(_askPrice, _amount, _make);
         success_ = true;
-    }
-
-    function buyIntl (uint _bidPrice, uint _amount, bool _make)
-		internal
-        isValidBuy(_bidPrice, _amount)
-    {
-        TradeMessage memory tmsg;
-        tmsg.amount = _amount;
-        tmsg.value = toValue(_bidPrice, _amount);
-        tmsg.price = _bidPrice;
-        tmsg.swap = BID;
-        tmsg.make = _make;
-
-        takeAsks(tmsg);
-        makeBid(tmsg);
-
-        balances[msg.sender] += tmsg.bought;
-        etherBalances[msg.sender] += msg.value - tmsg.spent;
-    }
-
-    function sellIntl (uint _askPrice, uint _amount, bool _make)
-        internal
-        isValidSell(_askPrice, _amount)
-    {
-        TradeMessage memory tmsg;
-        tmsg.amount = _amount;
-        tmsg.price = _askPrice;
-        tmsg.swap = ASK;
-        tmsg.make = _make;
-
-        takeBids(tmsg);
-        makeAsk(tmsg);
-
-        balances[msg.sender] += tmsg.amount - tmsg.sold;
-        etherBalances[msg.sender] += tmsg.value;
-// =======
-//         mutexProtected
-//         returns (bool success_)
-//     {
-//         buyIntl(_bidPrice, _amount, _make);
-//         success_ = true;
-//     }
-
-//     function sell (uint _askPrice, uint _amount, bool _make)
-//         public
-//         mutexProtected
-//         returns (bool success_)
-//     {
-//         sellIntl(_askPrice, _amount, _make);
-//         success_ = true;
-// >>>>>>> development
     }
 
     function withdraw(uint _ether)

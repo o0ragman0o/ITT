@@ -1,7 +1,7 @@
 import './misc.sol';
 
-// EIP20 Standard Token Interface
-contract EIP20Interface
+// ERC20 Standard Token Interface
+contract ERC20Interface
 {
     /* Structs */
         
@@ -41,7 +41,7 @@ contract EIP20Interface
     event Approval(address indexed _owner, address indexed _spender, uint256 _value);
 }
 
-contract EIP20Token is EIP20Interface, Misc
+contract ERC20Token is ERC20Interface, Misc
 {
 /* Constants */
 
