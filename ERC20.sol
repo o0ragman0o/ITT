@@ -3,107 +3,160 @@ import './misc.sol';
 // ERC20 Standard Token Interface
 contract ERC20Interface
 {
-    /* Structs */
-        
-    /* Constants */
+/* Structs */
 
-    /* State Valiables */
+/* Constants */
+
+/* State Valiables */
+    mapping (address => uint) public balanceOf;
+    mapping (address => mapping (address => uint)) public allowance;
     uint public totalSupply;
-    uint8 public decimalPlaces;
+    string public name;
     string public symbol;
-    mapping (address => uint) public balances;
-    mapping (address => mapping (address => uint)) public allowances;
+    uint8 public decimalPlaces;
 
-/* State variable Accessor Functions (leave commented)
-
-	function balances(address tokenHolder) public returns (uint);
-	function allowanaces (address tokenHolders, address proxy, uint allowance) public returns (uint);
-	function totalSupply() public returns (uint);
-	function symbol() public returns(string);
-	function decimalPlaces() public returns(uint);
-*/
-
-/* Function Abstracts */
-	
-    // Send _value amount of tokens to address _to
-    function transfer(address _to, uint256 _value) public returns (bool success);
-
-    // Send _value amount of tokens from address _from to address _to
-    function transferFrom(address _from, address _to, uint256 _value) public returns (bool success);
-
-    // Allow _spender to withdraw from your account, multiple times, up to the _value amount. If this function is called again it overwrites the current allowance with _value.
-    function approve(address _spender, uint256 _value) public returns (bool success);
-
+/* Events */
     // Triggered when tokens are transferred.
-    event Transfer(address indexed _from, address indexed _to, uint256 _value);
+    event Transfer(
+        address indexed _from,
+        address indexed _to,
+        uint256 _value);
 
     // Triggered whenever approve(address _spender, uint256 _value) is called.
-    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+    event Approval(
+        address indexed _owner,
+        address indexed _spender,
+        uint256 _value);
+
+/* Modifiers */
+
+/* Function Abstracts */
+
+    /* State variable Accessor Functions (for reference - leave commented)
+
+    // Get the account balance of another account with address _owner
+    function balanceOf(address tokenHolder)
+        public constant returns (uint);
+
+    // Returns the allowable transfer of tokens by a proxy
+    function allowance (address tokenHolders, address proxy, uint allowance)
+        public constant returns (uint);
+
+    // Get the total token supply
+    function totalSupply()
+        public constant returns (uint);
+
+    // Returns token symbol
+    function symbol()
+        public constant returns(string);
+
+    // Returns token symbol
+    function name()
+        public constant returns(string);
+
+    // Returns decimal places designated for unit of token.
+    function decimalPlaces()
+        public returns(uint);
+    */
+
+    // Send _value amount of tokens to address _to
+    function transfer(address _to, uint256 _value)
+        public returns (bool success);
+
+    // Send _value amount of tokens from address _from to address _to
+    function transferFrom(address _from, address _to, uint256 _value)
+        public returns (bool success);
+
+    // Allow _spender to withdraw from your account, multiple times, up to the
+    // _value amount. If this function is called again it overwrites the current
+    //  allowance with _value.
+    function approve(address _spender, uint256 _value)
+        public returns (bool success);
 }
 
 contract ERC20Token is ERC20Interface, Misc
 {
-/* Constants */
-
-/* Structs */
-        
-/* State Valiables */
 
 /* Events */
-	
-/* Modifiers */
-	
-	modifier isAvailable(uint _amount) {
-		if (_amount < balances[msg.sender]) throw;
-		_
-	}
-	
-	modifier hasAllowance(address _from, uint _amount) {
-		if (_amount > allowances[_from][msg.sender] ||
-		   _amount > balances[_from]) throw;
-		_
-	}
 
-/* Funtions Public */
- 
-    // Send _value amount of tokens to address _to
-    function transfer(address _to, uint256 _value)
-		public
-        mutexProtected()
-		isAvailable(_value)
-		returns (bool success_)
-    {
-        if (balances[msg.sender] < _value) throw;
-        balances[msg.sender] -= _value;
-        balances[_to] += _value;
-        Transfer(msg.sender, _to, _value);
-        success_ = true;
+/* Structs */
+
+/* Constants */
+
+/* State Valiables */
+
+/* Modifiers */
+
+    modifier isAvailable(uint _amount) {
+        if (_amount > balanceOf[msg.sender]) throw;
+        _
     }
 
+    modifier isAllowed(address _from, uint _amount) {
+        if (_amount > allowance[_from][msg.sender] ||
+           _amount > balanceOf[_from]) throw;
+        _
+        
+    }
+
+/* Funtions Public */
+
+    function ERC20Token(
+        uint _supply,
+        uint8 _decimalPlaces,
+        address _owner,
+        string _symbol,
+        string _name)
+    {
+        totalSupply = _supply;
+        decimalPlaces = _decimalPlaces;
+        symbol = _symbol;
+        name = _name;
+        owner = msg.sender;
+        balanceOf[owner] = totalSupply;
+    }
+
+    // Send _value amount of tokens to address _to
+    function transfer(address _to, uint256 _value)
+        public
+        noEther
+        isAvailable(_value)
+        mutexProtected()
+        returns (bool success)
+    {
+        balanceOf[msg.sender] -= _value;
+        balanceOf[_to] += _value;
+        Transfer(msg.sender, _to, _value);
+        success = true;
+    }
 
     // Send _value amount of tokens from address _from to address _to
     function transferFrom(address _from, address _to, uint256 _value)
-		public
+        public
+        noEther
+        isAllowed(_from, _value)
         mutexProtected
-        hasAllowance(_from, _value)
-        returns (bool success_)
+        returns (bool success)
     {
-        balances[_from] -= _value;
-        balances[_to] += _value;
+        balanceOf[_from] -= _value;
+        balanceOf[_to] += _value;
+        allowance[_from][msg.sender] -= _value;
         Transfer(msg.sender, _to, _value);
-        success_ = true;
+        success = true;
     }
 
-    // Allow _spender to withdraw from your account, multiple times, up to the _value amount. If this function is called again it overwrites the current allowance with _value.
+    // Allow _spender to withdraw from your account, multiple times, up to the
+    // _value amount. If this function is called again it overwrites the current
+    // allowance with _value.
     function approve(address _spender, uint256 _value)
-		public
+        public
+        noEther
         mutexProtected
-		returns (bool success_)        
+        returns (bool success)
     {
-        if (balances[msg.sender] == 0) throw;
-        allowances[msg.sender][_spender] = _value;
+        if (balanceOf[msg.sender] == 0) throw;
+        allowance[msg.sender][_spender] = _value;
         Approval(msg.sender, _spender, _value);
-        success_ = true;
+        success = true;
     }
-
 }
