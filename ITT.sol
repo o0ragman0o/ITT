@@ -46,7 +46,8 @@ contract ITTInterface
         address trader;
     }
 
-    // An internal message structure for staging state mutations during order processing
+    // An internal message structure for staging state mutations during order
+    // processing
     struct TradeMessage {
         uint amount;
         uint value;
@@ -86,13 +87,16 @@ contract ITTInterface
 
 /* Events */
 
-    event Ask (uint indexed price, uint amount, uint indexed orderId, address indexed trader);
-    event Bid (uint indexed price, uint amount, uint indexed orderId, address indexed trader);
-    event Bought (uint indexed price, uint amount, uint indexed orderId, address seller, address indexed buyer);
-    event Sold (uint indexed price, uint amount, uint indexed orderId, address indexed seller, address buyer);
+    event Ask (uint indexed price, uint amount, uint indexed orderId,
+        address indexed trader);
+    event Bid (uint indexed price, uint amount, uint indexed orderId,
+        address indexed trader);
+    event Bought (uint indexed price, uint amount, uint indexed orderId,
+        address seller, address indexed buyer);
+    event Sold (uint indexed price, uint amount, uint indexed orderId,
+        address indexed seller, address buyer);
     event Burned (address indexed, uint _numTokensToBurn);
-    event Trading();
-    event Halt();
+    event Trading(bool trading);
 
 
 /* Functions getters */
@@ -164,7 +168,7 @@ contract ITT is Misc, ITTInterface, ERC20Token
         _
     }
 
-    modifier ownsOrder(uint _orderId) {
+    modifier ownsOrder(uint _price, uint _orderId) {
         if (msg.sender != orders[_orderId].trader) throw;
         _       
     }
@@ -190,7 +194,7 @@ contract ITT is Misc, ITTInterface, ERC20Token
     }
 
     modifier isMake(TradeMessage tmsg) {
-        if (!tmsg.make) {
+        if (!tmsg.make || tmsg.amount == 0) {
             tmsg.amount = 0;
             return;
         }
@@ -370,18 +374,19 @@ contract ITT is Misc, ITTInterface, ERC20Token
     function cancel(uint _price, uint _orderId)
         public
         noEther
-        ownsOrder(_orderId)
+        ownsOrder(_price, _orderId)
         mutexProtected
         returns (bool success_)
     {
         // TODO validate price is of actual order
+        closeOrder(_price, _orderId);
         if (_price < spread(ASK))
             // was a buy order
-            etherBalanceOf[msg.sender] += toValue(_price, orders[_orderId].amount);
+            etherBalanceOf[msg.sender] += 
+                toValue(_price, orders[_orderId].amount);
         else
             // was a sell order
             balanceOf[msg.sender] += orders[_orderId].amount;
-        closeOrder(_price, _orderId);
         success_ = true;
     }
 
@@ -398,27 +403,15 @@ contract ITT is Misc, ITTInterface, ERC20Token
         success_ = true;
     }
 
-    function startTrading()
+    function setTrading(bool _trading)
         public
         noEther
         isOwner
         mutexProtected
         returns (bool success_)
     {
-        trading = true;
-        Trading();
-        success_ = true;
-    }
-
-    function stopTrading()
-        public
-        noEther
-        isOwner
-        mutexProtected
-        returns (bool success_)
-    {
-        trading = false;
-        Halt();
+        trading = _trading;
+        Trading(true);
         success_ = true;
     }
 
@@ -489,7 +482,8 @@ contract ITT is Misc, ITTInterface, ERC20Token
         etherBalanceOf[order.trader] += toValue(bestPrice, tmsg.amount);
         orderFIFOs[bestPrice].auxData -= tmsg.amount;
         tmsg.spent += toValue(bestPrice, tmsg.amount);
-        Bought (tmsg.price, tmsg.amount, tmsg.orderId, order.trader, msg.sender);
+        Bought (tmsg.price, tmsg.amount, tmsg.orderId,
+            order.trader, msg.sender);
         tmsg.amount = 0;
         return;
     }
@@ -506,7 +500,7 @@ contract ITT is Misc, ITTInterface, ERC20Token
         uint orderValue = toValue(bestPrice, order.amount);
         if (tmsg.amount >= order.amount) {
             // Take full amount
-             tmsg.value += toValue(bestPrice, order.amount);
+            tmsg.value += toValue(bestPrice, order.amount);
             tmsg.amount -= order.amount;
             balanceOf[order.trader] += order.amount;
             tmsg.sold += order.amount;
