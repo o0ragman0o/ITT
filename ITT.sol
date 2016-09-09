@@ -1,7 +1,7 @@
 /*
 file:   ITT.sol
 ver:    0.1.0-alpha
-updated:1-Sep-2016
+updated:9-Sep-2016
 author: Darryl Morris
 email:  o0ragman0o AT gmail.com
 
@@ -178,11 +178,6 @@ contract ITT is Misc, ITTInterface, ERC20Token
         _
     }
 
-    modifier hasBalance(address _member, uint _amount) {
-        if (balanceOf[_member] < _amount) throw;
-        _
-    }
-    
     modifier limitRecurse() {
         if (msg.gas < MINRECURSGAS) return;
         _

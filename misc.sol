@@ -1,5 +1,17 @@
-/* 
+/*
+file:   misc.sol
+ver:    0.1.0-alpha
+updated:9-Sep-2016
+author: Darryl Morris
+email:  o0ragman0o AT gmail.com
+
 An inheritable contract containing common constants, modifiers and functions.
+
+This software is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU lesser General Public License for more details.
+<http://www.gnu.org/licenses/>.
 */
 
 contract Misc
@@ -15,7 +27,7 @@ contract Misc
 
     // To throw call not made by owner
     modifier isOwner() {
-        // if (msg.sender != owner) throw;
+        if (msg.sender != owner) throw;
         _
     }
 

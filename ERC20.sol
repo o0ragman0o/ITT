@@ -1,3 +1,21 @@
+/*
+file:   ERC20.sol
+ver:    0.1.0-alpha
+updated:9-Sep-2016
+author: Darryl Morris
+email:  o0ragman0o AT gmail.com
+
+An ERC20 compliant token.
+
+
+This software is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU lesser General Public License for more details.
+<http://www.gnu.org/licenses/>.
+*/
+
+
 import './misc.sol';
 
 // ERC20 Standard Token Interface
@@ -87,6 +105,11 @@ contract ERC20Token is ERC20Interface, Misc
 
 /* Modifiers */
 
+    modifier hasBalance(address _member, uint _amount) {
+        if (balanceOf[_member] < _amount) throw;
+        _
+    }
+    
     modifier isAvailable(uint _amount) {
         if (_amount > balanceOf[msg.sender]) throw;
         _
@@ -151,10 +174,10 @@ contract ERC20Token is ERC20Interface, Misc
     function approve(address _spender, uint256 _value)
         public
         noEther
+        hasBalance(msg.sender, 1)
         mutexProtected
         returns (bool success)
     {
-        if (balanceOf[msg.sender] == 0) throw;
         allowance[msg.sender][_spender] = _value;
         Approval(msg.sender, _spender, _value);
         success = true;
