@@ -1,7 +1,7 @@
 /*
 file:   ITT.sol
-ver:    0.1.0-alpha
-updated:9-Sep-2016
+ver:    0.3.2
+updated:21-Sep-2016
 author: Darryl Morris
 email:  o0ragman0o AT gmail.com
 
@@ -16,184 +16,172 @@ GNU lesser General Public License for more details.
 <http://www.gnu.org/licenses/>.
 */
 
-import 'misc.sol';
-import 'LibCLLi.sol';
-import 'ERC20.sol';
+pragma solidity ^0.4.0;
 
+import "Base.sol";
+import "Math.sol";
+import "ERC20.sol";
+import "LibCLL.sol";
 
 contract ITTInterface
 {
 
-    using LibCLLi for LibCLLi.LinkedList;
+    using LibCLLu for LibCLLu.CLL;
 
 /* Constants */
+
+    string constant VERSION = "ITT 0.3.2";
     uint constant HEAD = 0;
-    uint constant MINNUM = 1;
+    uint constant MINNUM = uint(1);
+    // use only 128 bits of uint to prevent mul overflows.
     uint constant MAXNUM = 2**128;
+    uint constant MINPRICE = uint(1);
+    uint constant NEG = uint(-1); //2**256 - 1
     bool constant PREV = false;
     bool constant NEXT = true;
     bool constant BID = false;
     bool constant ASK = true;
-    // minimum gas required to prevent out of gas on 'take' recursion
-    uint constant MINRECURSGAS = 100000; 
 
-    // Minimal storage requirments for an order.
-    // Order price and swap direction are determined by the price FIFO.
-    struct Order {
-        // Token amount to buy or sell.
-        uint amount;
-        // Token holder address of order maker.
-        address trader;
-    }
+    // minimum gas required to prevent out of gas on 'take' loop
+    uint constant MINGAS = 100000;
 
-    // An internal message structure for staging state mutations during order
-    // processing
+    // For staging and commiting trade details 
     struct TradeMessage {
-        uint amount;
-        uint value;
-        uint price;
-        uint spent;
-        uint bought;
-        uint sold;
-        uint orderId;
-        bool swap;
         bool make;
+        bool side;
+        uint price;
+        uint tradeAmount;
+        uint ownTokens;
+        uint ownEther;
     }
 
 /* State Valiables */
 
-    // Orders in order of creation
-    Order[] public orders;
+    // To allow for trade halting by owner.
+    bool public trading;
 
-    // Using the Circular Linked List library for the price book.
-    // The priceBook holds a list of prices of live orders used to 
-    // lookup FIFOs in the orderFIFO's mapping.
-    // Bid prices are inserted previous to the HEAD in decending order
-    // Ask prices are inserted after the HEAD in ascending order
-    LibCLLi.LinkedList public priceBook;
-
-    // All order indices are placed in a mapping of FIFO's
-    // (which are circular linked lists) under the key of the order price.
-    // Make orders are inserted previous to the head.
-    // Take orders are removed next from the head.
-    mapping (uint => LibCLLi.LinkedList) public orderFIFOs;
-
-    // Token holders also require a withdrawable ether balance to store sales
-    // from tokens and change from buy orders and cancelations.
+    // Mapping for ether ownership of accumulated deposits, sales and refunds.
     mapping (address => uint) public etherBalanceOf;
 
-    // To allow or halt trading.
-    bool public trading;
+    // Orders are stored in circular linked list FIFO's which are mappings with
+    // price as key and value as trader address.  A trader can have only one
+    // order open at each price. Reordering at that price will cancel the first
+    // order and push the new one onto the back of the queue.
+    mapping (uint => LibCLLu.CLL) orderFIFOs;
+    
+    // Order amounts are stored in a seperate lookup. The keys of this mapping
+    // are `sha3` hashes of the price and trader address.
+    // This mapping prevents more than one order at a particular price.
+    mapping (bytes32 => uint) public amounts;
+
+    // The pricebook is a linked list holding keys to lookup the price FIFO's
+    LibCLLu.CLL priceBook = orderFIFOs[0];
+
 
 /* Events */
 
-    event Ask (uint indexed price, uint amount, uint indexed orderId,
-        address indexed trader);
-    event Bid (uint indexed price, uint amount, uint indexed orderId,
-        address indexed trader);
-    event Bought (uint indexed price, uint amount, uint indexed orderId,
-        address seller, address indexed buyer);
-    event Sold (uint indexed price, uint amount, uint indexed orderId,
-        address indexed seller, address buyer);
-    event Burned (address indexed, uint _numTokensToBurn);
+    // Triggered on a make sell order
+    event Ask (uint indexed price, uint amount, address indexed trader);
+
+    // Triggered on a make buy order
+    event Bid (uint indexed price, uint amount, address indexed trader);
+
+    // Triggered on a filled order
+    event Sale (uint indexed price, uint amount, address indexed buyer, address indexed seller);
+
+    // Triggered when trading is started or halted
     event Trading(bool trading);
 
+/* Functions Public constant */
 
-/* Functions getters */
-    function getMetrics()
-        public constant returns (
-            uint balanceOf_,
-            uint etherBalanceOf_,
-            uint lowestAsk_,
-            uint highestBid_,
-            uint askVol_,
-            uint bidVol_,
-            uint8 decimalPlaces_,
-            string symbol_,
-            string name_);
-
-    function getVolumeAtPrice(uint _price)
-        public constant returns (uint);
-
-    function getPriceBookVolumes()
-        public constant returns (uint[]);
-
-    function getFirstOrderIdAtPrice(uint _price)
+    /// @notice Returns best bid or ask price. 
+    function spread(bool _side) public constant returns(uint);
+    
+    /// @notice Returns the order amount for trader `_trader` at '_price'
+    /// @param _trader Address of trader
+    /// @param _price Price of order
+    function getAmount(uint _price, address _trader) 
         public constant returns(uint);
 
-    function spread(bool _dir)
-        public constant returns(uint);
+    /// @notice Returns the collective order volume at a `_price`.
+    /// @param _price FIFO for price.
+    function getPriceVolume(uint _price) public constant returns (uint);
 
-/* Functions Public */
+    /// @notice Returns an array of all prices and their volumes.
+    /// @dev [even] indecies are the price. [odd] are the volume. [0] is the
+    /// index of the spread.
+    function getBook() public constant returns (uint[]);
 
+/* Functions Public non-constant*/
+
+    /// @notice Will buy `_amount` tokens at or below `_price` each.
+    /// @param _bidPrice Highest price to bid.
+    /// @param _amount The requested amount of tokens to buy.
+    /// @param _make Value of true will make order if not filled.
     function buy (uint _bidPrice, uint _amount, bool _make)
-        public returns (bool success_);
+        payable returns (bool);
 
+    /// @notice Will sell `_amount` tokens at or above `_price` each.
+    /// @param _askPrice Lowest price to ask.
+    /// @param _amount The requested amount of tokens to buy.
+    /// @param _make A value of true will make an order if not market filled.
     function sell (uint _askPrice, uint _amount, bool _make)
-        public returns (bool success_);
+        public returns (bool);
 
-    function withdraw(uint _ether)
-        public returns (bool success_);
+    /// @notice Will withdraw `_ether` to your account.
+    /// @param _ether The amount to withdraw
+    function withdraw(uint _ether) public returns (bool success_);
 
-    function cancel(uint _price, uint _orderId)
-        public returns (bool success_);
-        
-    function burn(uint _numTokensToBurn)
-        public returns (bool success_);
+    /// @notice Cancel order at `_price`
+    /// @param _price The price at which the order was placed.
+    function cancel(uint _price) public returns (bool);
+
+    /// @notice Will set trading state to `_trading`
+    /// @param _trading State to set trading to.
+    function setTrading(bool _trading) public returns (bool);
 }
 
 
 /* Intrinsically Tradable Token code */ 
-contract ITT is Misc, ITTInterface, ERC20Token
+
+contract ITT is ERC20Token, ITTInterface
 {
 
 /* Structs */
 
 /* Modifiers */
 
+    /// @dev Passes if token is currently trading
     modifier isTrading() {
         if (!trading) throw;
-        _
+        _;
     }
 
+    /// @dev Validate buy parameters
     modifier isValidBuy(uint _bidPrice, uint _amount) {
         if ((etherBalanceOf[msg.sender] + msg.value) < (_amount * _bidPrice) ||
-            (_amount * _bidPrice ) == NULL) throw; // has insufficient ether.
-        _
+            _amount == 0 || _amount > totalSupply ||
+            _bidPrice <= MINPRICE || _bidPrice >= MAXNUM) throw; // has insufficient ether.
+        _;
     }
 
+    /// @dev Validates sell parameters. Price must be larger than 1.
     modifier isValidSell(uint _askPrice, uint _amount) {
-        if (_amount > balanceOf[msg.sender] ||
-            (_amount * _askPrice ) == NULL) throw;
-        _
-    }
-
-    modifier ownsOrder(uint _price, uint _orderId) {
-        if (msg.sender != orders[_orderId].trader) throw;
-        _       
+        if (_amount > balanceOf[msg.sender] || _amount == 0 ||
+            _askPrice < MINPRICE || _askPrice > MAXNUM) throw;
+        _;
     }
     
+    /// @dev Validates ether balance
     modifier hasEther(address _member, uint _ether) {
         if (etherBalanceOf[_member] < _ether) throw;
-        _
+        _;
     }
 
-    modifier limitRecurse() {
-        if (msg.gas < MINRECURSGAS) return;
-        _
-    }
-
-    modifier takeAvailable(TradeMessage tmsg) {
-        if (cmp(tmsg.price, spread(!tmsg.swap), tmsg.swap)) return;
-        _
-    }
-
-    modifier isMake(TradeMessage tmsg) {
-        if (!tmsg.make || tmsg.amount == 0) {
-            tmsg.amount = 0;
-            return;
-        }
-        _
+    /// @dev Validates token balance
+    modifier hasBalance(address _member, uint _amount) {
+        if (balanceOf[_member] < _amount) throw;
+        _;
     }
 
 /* Functions */
@@ -202,392 +190,281 @@ contract ITT is Misc, ITTInterface, ERC20Token
         uint _totalSupply,
         uint8 _decimalPlaces,
         string _symbol,
-        string _name,
-        address _owner) ERC20Token(
+        string _name
+        )
+            ERC20Token(
                 _totalSupply,
                 _decimalPlaces,
-                _owner,
                 _symbol,
-                _name)
+                _name
+                )
     {
-
         // setup pricebook and maximum spread.
-        priceBook.init(true);
-        priceBook.nodes[HEAD].dataIndex = MINNUM;
-        priceBook.nodes[HEAD].links[PREV] = MINNUM;
-        priceBook.nodes[HEAD].links[NEXT] = MAXNUM;
-
-        priceBook.nodes[MAXNUM].dataIndex = MAXNUM;
-        priceBook.nodes[MAXNUM].links[PREV] = HEAD;
-        priceBook.nodes[MAXNUM].links[NEXT] = MAXNUM;
-
-        priceBook.nodes[MINNUM].dataIndex = MINNUM;
-        priceBook.nodes[MINNUM].links[PREV] = MINNUM;
-        priceBook.nodes[MINNUM].links[NEXT] = HEAD;
-
-        // dummy order at index 0 to allow for orderID >= 1 existance testing
-        orders.push(Order(1,0));
-    }
-
-    function ()
-    {
-        throw;
+        priceBook.cll[HEAD][PREV] = MINPRICE;
+        priceBook.cll[MINPRICE][PREV] = MAXNUM;
+        priceBook.cll[HEAD][NEXT] = MAXNUM;
+        priceBook.cll[MAXNUM][NEXT] = MINPRICE;
+        trading = true;
+        balanceOf[owner] = totalSupply;
     }
 
 /* Functions Getters */
 
-    function getMetrics()
-        public constant returns (
-            uint balanceOf_,
-            uint etherBalanceOf_,
-            uint lowestAsk_,
-            uint highestBid_,
-            uint askVol_,
-            uint bidVol_,
-            uint8 decimalPlaces_,
-            string symbol_,
-            string name_)
-   {
-        balanceOf_ = balanceOf[msg.sender];
-        etherBalanceOf_ = etherBalanceOf[msg.sender];
-        lowestAsk_ = spread(ASK);
-        highestBid_ = spread(BID);
-        askVol_ = orderFIFOs[lowestAsk_].auxData;
-        bidVol_ = orderFIFOs[highestBid_].auxData;
-        decimalPlaces_ = decimalPlaces;
-        symbol_ = symbol;
-        name_ = name;
+    function version() public constant returns(string) {
+        return VERSION;
+    }
+
+    function spread(bool _side) public constant returns(uint) {
+        return priceBook.step(HEAD, _side);
+    }
+
+    function getAmount(uint _price, address _trader) 
+        public constant returns(uint) {
+        return amounts[sha3(_price, _trader)];
+    }
+
+    function sizeOf(uint l) constant returns (uint s) {
+        if(l == 0) return priceBook.sizeOf();
+        return orderFIFOs[l].sizeOf();
+    }
+    
+    function getPriceVolume(uint _price) public constant returns (uint v_)
+    {
+        uint n = orderFIFOs[_price].step(HEAD,NEXT);
+        while (n != HEAD) { 
+            v_ += amounts[sha3(_price, address(n))];
+            n = orderFIFOs[_price].step(n, NEXT);
+        }
         return;
     }
 
-    function getVolumeAtPrice(uint _price) public
-        constant
-        returns (uint)
+    function getBook() public constant returns (uint[])
     {
-        return orderFIFOs[_price].auxData;
-    }
-
-    function getPriceBookVolumes() public
-        constant
-        returns (uint[])
-    {
-        uint[] memory volumes = new uint[](priceBook.size);
-        uint i = 0;
-        uint p = MINNUM;
+        uint i; 
+        uint p = priceBook.step(MINNUM, NEXT);
+        uint[] memory volumes = new uint[](priceBook.sizeOf() * 2 - 2);
         while (p < MAXNUM) {
             volumes[i++] = p;
-            volumes[i++] =  orderFIFOs[p].auxData;
-            p = priceBook.step(p, true);
+            volumes[i++] = getPriceVolume(p);
+            p = priceBook.step(p, NEXT);
         }
         return volumes; 
     }
-
-    function getFirstOrderIdAtPrice(uint _price) public
-        constant
-        returns(uint)
+    
+    function numOrdersOf(address addr) public constant returns (uint)
     {
-        return orderFIFOs[_price].step(HEAD, true);
+        uint c;
+        uint p = MINNUM;
+        while (p < MAXNUM) {
+            if (amounts[sha3(p, msg.sender)] > 0) c++;
+            p = priceBook.step(p, NEXT);
+        }
+        return c;
+    }
+    
+    function getOpenOrdersOf(address addr) public constant returns (uint[])
+    {
+        uint i;
+        uint c;
+        uint p = MINNUM;
+        uint[] memory open = new uint[](numOrdersOf(addr)*2);
+        p = MINNUM;
+        while (p < MAXNUM) {
+            if (amounts[sha3(p, msg.sender)] > 0) {
+                open[i++] = p;
+                open[i++] = amounts[sha3(p, msg.sender)];
+            }
+            p = priceBook.step(p, NEXT);
+        }
+        return open;
     }
 
-    function spread(bool _dir) public
-        constant
-        returns(uint)
+    function getNode(uint _list, uint _node) public constant returns(uint[2])
     {
-        return priceBook.step(HEAD, _dir);
+        return [orderFIFOs[_list].cll[_node][PREV], 
+            orderFIFOs[_list].cll[_node][NEXT]];
     }
-
-    function getNode(uint _list, uint _node) public
-        constant
-        returns(uint[3])
-    {
-        if (_list == 0) return [
-            priceBook.nodes[_node].links[PREV],
-            priceBook.nodes[_node].links[NEXT],
-            priceBook.nodes[_node].dataIndex];
-        else return [
-            orderFIFOs[_list].nodes[_node].links[PREV],
-            orderFIFOs[_list].nodes[_node].links[NEXT],
-            orderFIFOs[_list].nodes[_node].dataIndex];
-    }
-
-    function toPrice (uint _value, uint _amount) public
-        constant
-        returns (uint)
-    {
-        return _value / _amount;
-    }
-
-    function toAmount (uint _value, uint _price) public
-        constant
-        returns (uint)
-    {
-        return _value / _price;
-    }
-
-    function toValue (uint _price, uint _amount) public
-        constant
-        returns (uint)
-    {
-        return _price * _amount;
-    }
-
+    
 /* Functions Public */
 
+// Here non-constant public functions act as a security layer. They are re-entry
+// protected so cannot call each other. For this reason, they
+// are being used for parameter and enterance validation, while internal
+// functions manage the logic. This also allows for deriving contracts to
+// overload the public function with customised validations and not have to
+// worry about rewritting the logic.
+
     function buy (uint _bidPrice, uint _amount, bool _make)
-        public
+        payable
+        canEnter
         isTrading
-        mutexProtected
-        returns (bool success_)
+        isValidBuy(_bidPrice, _amount)
+        returns (bool)
     {
-        buyIntl(_bidPrice, _amount, _make);
-        success_ = true;
+        trade(_bidPrice, _amount, BID, _make);
+        return true;
     }
 
     function sell (uint _askPrice, uint _amount, bool _make)
         public
-        noEther
+        canEnter
         isTrading
-        mutexProtected
-        returns (bool success_)
+        isValidSell(_askPrice, _amount)
+        returns (bool)
     {
-        sellIntl(_askPrice, _amount, _make);
-        success_ = true;
+        trade(_askPrice, _amount, ASK, _make);
+        return true;
     }
 
     function withdraw(uint _ether)
         public
-        noEther
+        canEnter
         hasEther(msg.sender, _ether)
-        mutexProtected
         returns (bool success_)
     {
         etherBalanceOf[msg.sender] -= _ether;
-        if(!msg.sender.send(_ether)) throw;
+        safeSend(msg.sender, _ether);
         success_ = true;
     }
 
-    function cancel(uint _price, uint _orderId)
+    function cancel(uint _price)
         public
-        noEther
-        ownsOrder(_price, _orderId)
-        mutexProtected
-        returns (bool success_)
+        canEnter
+        returns (bool)
     {
-        // TODO validate price is of actual order
-        closeOrder(_price, _orderId);
-        if (_price < spread(ASK))
-            // was a buy order
-            etherBalanceOf[msg.sender] += 
-                toValue(_price, orders[_orderId].amount);
-        else
-            // was a sell order
-            balanceOf[msg.sender] += orders[_orderId].amount;
-        success_ = true;
+        TradeMessage memory tmsg;
+        tmsg.price = _price;
+        tmsg.ownTokens = balanceOf[msg.sender];
+        tmsg.ownEther = etherBalanceOf[msg.sender];
+        cancelIntl(tmsg);
+        balanceOf[msg.sender] = tmsg.ownTokens;
+        etherBalanceOf[msg.sender] = tmsg.ownEther;
+        return true;
     }
-
-    function burn(uint _numTokensToBurn)
-        public
-        noEther
-        hasBalance(msg.sender, _numTokensToBurn)
-        mutexProtected
-        returns (bool success_)
-    {
-        balanceOf[msg.sender] -= _numTokensToBurn;
-        totalSupply -= _numTokensToBurn;
-        Burned(msg.sender, _numTokensToBurn);
-        success_ = true;
-    }
-
+    
     function setTrading(bool _trading)
         public
-        noEther
-        isOwner
-        mutexProtected
-        returns (bool success_)
+        onlyOwner
+        canEnter
+        returns (bool)
     {
         trading = _trading;
         Trading(true);
-        success_ = true;
+        return true;
     }
-
 
 /* Functions Internal */
 
-    function buyIntl (uint _bidPrice, uint _amount, bool _make)
-        internal
-        isValidBuy(_bidPrice, _amount)
-    {
+// Internal functions handle this contract's logic.
+
+    function trade (uint _price, uint _amount, bool _side, bool _make) internal {
         TradeMessage memory tmsg;
-        tmsg.amount = _amount;
-        tmsg.value = toValue(_bidPrice, _amount);
-        tmsg.price = _bidPrice;
-        tmsg.swap = BID;
+        tmsg.price = _price;
+        tmsg.tradeAmount = _amount;
+        tmsg.side = _side;
         tmsg.make = _make;
+        
+        // Cached state balances to memory and commit once after trade.
+        tmsg.ownTokens  = balanceOf[msg.sender];
+        tmsg.ownEther = etherBalanceOf[msg.sender] + msg.value;
 
-        takeAsks(tmsg);
-        makeBid(tmsg);
-
-        balanceOf[msg.sender] += tmsg.bought;
-        etherBalanceOf[msg.sender] += msg.value - tmsg.spent;
-    }
-
-    function sellIntl (uint _askPrice, uint _amount, bool _make)
-        internal
-        isValidSell(_askPrice, _amount)
-    {
-        TradeMessage memory tmsg;
-        tmsg.amount = _amount;
-        tmsg.price = _askPrice;
-        tmsg.swap = ASK;
-        tmsg.make = _make;
-
-        takeBids(tmsg);
-        makeAsk(tmsg);
-
-        balanceOf[msg.sender] += tmsg.amount - tmsg.sold;
-        etherBalanceOf[msg.sender] += tmsg.value;
-    }
-
-    function takeAsks(TradeMessage tmsg)
-        // * NOTE * This function can recurse by design.
-        internal
-        limitRecurse
-        takeAvailable(tmsg)
-    {
-        uint bestPrice = spread(!tmsg.swap);
-        tmsg.orderId = getFirstOrderIdAtPrice(bestPrice);
-        Order order = orders[tmsg.orderId];
-        uint orderValue = toValue(bestPrice, order.amount);
-        if (tmsg.amount >= order.amount) {
-            // Take full amount
-            tmsg.spent += orderValue;
-            tmsg.bought += order.amount;
-            tmsg.amount -= order.amount;
-            etherBalanceOf[order.trader] += orderValue;
-            Bought (tmsg.price, order.amount,
-                tmsg.orderId, order.trader, msg.sender);
-            closeOrder(bestPrice, tmsg.orderId);
-            takeAsks(tmsg); // recurse
-            return;
-        }
-        if (tmsg.amount == 0) return;
-        // Insufficient funds, take partial ask.
-        order.amount -= tmsg.amount;
-        tmsg.bought += tmsg.amount;
-        etherBalanceOf[order.trader] += toValue(bestPrice, tmsg.amount);
-        orderFIFOs[bestPrice].auxData -= tmsg.amount;
-        tmsg.spent += toValue(bestPrice, tmsg.amount);
-        Bought (tmsg.price, tmsg.amount, tmsg.orderId,
-            order.trader, msg.sender);
-        tmsg.amount = 0;
-        return;
-    }
-
-    function takeBids(TradeMessage tmsg)
-        // * NOTE * This function can recurse by design.
-        internal
-        limitRecurse
-        takeAvailable(tmsg)
-    {
-        uint bestPrice = spread(!tmsg.swap);
-        tmsg.orderId = getFirstOrderIdAtPrice(bestPrice);
-        Order order = orders[tmsg.orderId];
-        uint orderValue = toValue(bestPrice, order.amount);
-        if (tmsg.amount >= order.amount) {
-            // Take full amount
-            tmsg.value += toValue(bestPrice, order.amount);
-            tmsg.amount -= order.amount;
-            balanceOf[order.trader] += order.amount;
-            tmsg.sold += order.amount;
-            Sold (bestPrice, order.amount,
-                tmsg.orderId, msg.sender, order.trader);
-            closeOrder(bestPrice, tmsg.orderId);
-            takeBids(tmsg); // recurse;
-            return;
-        }
-        if(tmsg.amount == 0) return;
-        // Insufficient funds, take partial bid.
-        uint sellValue = toValue(bestPrice, tmsg.amount);
-        tmsg.value += sellValue;
-        order.amount -= sellValue;
-        balanceOf[order.trader] += tmsg.amount;
-        orderFIFOs[bestPrice].auxData -= tmsg.amount;
-        tmsg.sold += tmsg.amount;
-        tmsg.amount = 0;
-        Sold (bestPrice, tmsg.amount, tmsg.orderId, msg.sender, order.trader);
-        return;
-    }
-
-    function makeAsk(TradeMessage tmsg)
-        internal
-        isMake(tmsg)
-    {
+        take(tmsg);
         make(tmsg);
-        tmsg.sold += tmsg.amount;
-        Ask (tmsg.price, tmsg.amount, tmsg.orderId, msg.sender);
-        tmsg.amount = 0;
+        
+        balanceOf[msg.sender] = tmsg.ownTokens;
+        etherBalanceOf[msg.sender] = tmsg.ownEther;
     }
-
-    function makeBid(TradeMessage tmsg)
+    
+    function take (TradeMessage tmsg)
         internal
-        isMake(tmsg)
     {
-        make(tmsg);
-        tmsg.spent += toValue(tmsg.price, tmsg.amount);
-        Bid (tmsg.price, tmsg.amount, tmsg.orderId, msg.sender);
-        tmsg.amount = 0;
-    }
+        address maker;
+        bytes32 orderHash;
+        uint takeAmount;
+        uint takeEther;
+        uint sign = tmsg.side ? uint(1) : uint(-1);
+        uint bestPrice = spread(!tmsg.side);
 
+        // Loop with available gas to take orders
+        while (cmpEq(tmsg.price, bestPrice, !tmsg.side) && msg.gas > MINGAS)
+        {
+            Log("Taking");
+            maker = address(orderFIFOs[bestPrice].step(HEAD, NEXT));
+            orderHash = sha3(bestPrice, maker);
+            takeAmount = amounts[orderHash];
+            if (msg.sender == maker) {
+                // Can't trade with self so cancel order if owned by taker.
+                Log("Can't trade with self.");
+                cancelIntl(tmsg);
+                bestPrice = spread(!tmsg.side);
+                continue;
+            }
+            if (takeAmount > tmsg.tradeAmount) {
+                // Prepare to take partial order
+                amounts[orderHash] -= tmsg.tradeAmount;
+                takeAmount = tmsg.tradeAmount;
+                tmsg.tradeAmount = 0;
+            } else {
+                // Prepare to take full order
+                tmsg.tradeAmount -= takeAmount;
+                closeOrder(bestPrice, maker);
+            }
+            takeEther = bestPrice * takeAmount;
+            tmsg.ownEther += takeEther * sign;
+            tmsg.ownTokens -= takeAmount * sign;
+            if (tmsg.side) {
+                // Sell to bidder
+                balanceOf[maker] += takeAmount;
+            } else {
+                // Buy from asker;
+                etherBalanceOf[maker] += takeEther;
+            }
+            bestPrice = spread(!tmsg.side);
+            Sale (bestPrice, takeAmount, msg.sender, maker);
+        }
+    }
+    
     function make(TradeMessage tmsg)
         internal
     {
-        if (tmsg.amount == 0) return;
-        tmsg.orderId = orders.push(Order(tmsg.amount, msg.sender)) - 1;
-        if (orderFIFOs[tmsg.price].newNodeKey == NULL)
-            // Make sure price FIFO index exists
-            insertFIFO(tmsg.price, tmsg.swap);
-        // Insert order ID into price FIFO
-        orderFIFOs[tmsg.price].pushTail(tmsg.orderId); 
-        // Update price volume
-        orderFIFOs[tmsg.price].auxData += tmsg.amount; 
-    }
-
-    function closeOrder(uint _price, uint _orderId)
-        internal
-        returns (bool)
-    {
-        orderFIFOs[_price].remove(_orderId);
-        orderFIFOs[_price].auxData -= orders[_orderId].amount;
-        if (orderFIFOs[_price].size == 0) {
-            priceBook.remove(_price);
-            delete orderFIFOs[_price].nodes[0];
-            delete orderFIFOs[_price];
+        bytes32 orderHash;
+        if (tmsg.tradeAmount == 0 || !tmsg.make || msg.gas < MINGAS) return;
+        orderHash = sha3(tmsg.price, msg.sender);
+        if (amounts[orderHash] != 0) {
+            // Cancel any pre-existing owned order at this price
+            cancelIntl(tmsg);
         }
-        delete orders[_orderId];
-        return true;
+        if (!orderFIFOs[tmsg.price].exists()) {
+            // Register price in pricebook
+            priceBook.insert(
+                priceBook.seek(HEAD, tmsg.price, tmsg.side),
+                tmsg.price, !tmsg.side);
+        }
+
+        amounts[orderHash] = tmsg.tradeAmount;
+        orderFIFOs[tmsg.price].push(uint(msg.sender), PREV); 
+
+        if (tmsg.side) {
+            tmsg.ownTokens -= tmsg.tradeAmount;
+            Ask (tmsg.price, tmsg.tradeAmount, msg.sender);
+        } else {
+            tmsg.ownEther -= tmsg.tradeAmount * tmsg.price;
+            Bid (tmsg.price, tmsg.tradeAmount, msg.sender);
+        }
     }
 
-    function seekInsert(uint _price, bool _dir)
-        internal
-        constant
-        returns (uint _ret)
-    {
-        _ret = spread(_dir);
-        while (cmp( _price, _ret, _dir))
-            _ret = priceBook.nodes[_ret].links[_dir];
-        return;
+    function cancelIntl(TradeMessage tmsg) internal {
+        uint amount = amounts[sha3(tmsg.price, msg.sender)];
+        if (tmsg.price > spread(BID)) tmsg.ownTokens += amount; // was ask
+        else tmsg.ownEther += tmsg.price * amount; // was bid
+        closeOrder(tmsg.price, msg.sender);
     }
 
-    function insertFIFO (uint _price, bool _dir)
-        internal
-        returns (bool)
-    {
-        orderFIFOs[_price].init(true);
-        uint a = spread(_dir);
-        while (cmp( _price, a, _dir))
-            a = priceBook.nodes[a].links[_dir];
-        // Insert order ID into price FIFO
-        priceBook.insertNewNode(a, _price, !_dir);
-        return true;
+    function closeOrder(uint _price, address _trader) internal {
+        orderFIFOs[_price].remove(uint(_trader));
+        if (!orderFIFOs[_price].exists())  {
+            priceBook.remove(_price);
+        }
+        delete amounts[sha3(_price, _trader)];
     }
 }
