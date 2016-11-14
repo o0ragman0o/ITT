@@ -1,0 +1,21 @@
+<template name="orderBook">
+  <h3>Cumulative Market Orders</h3>
+  <h4>
+      <span class="num-field">PRICE Ξ</span>
+      <span class="num-field">VOLUME</span>
+      <span class="num-field">TOTAL Ξ</span>
+  </h4>
+  <div class="Dapp-overflow">
+    <ul class="order-list">
+    {{#each orderBook}}
+      <li class="priceQuote">
+        <button class="{{swap}}">
+        <span class="num-field">{{price}}</span>
+        <span class="num-field">{{volume}}</span>
+        <span class="num-field">{{total}}</span>
+        </button>
+      </li>
+    {{/each}}
+    </ul>
+  </div>
+</template>

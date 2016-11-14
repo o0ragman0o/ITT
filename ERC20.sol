@@ -25,11 +25,11 @@ contract ERC20Interface
 /* Structs */
 
 /* Constants */
-    string constant VERSION = "ERC20 0.2.2-o0ragman0o";
+    string constant VERSION = "ERC20 0.2.3-o0ragman0o";
 
 /* State Valiables */
     uint public totalSupply;
-    uint8 public decimalPlaces;
+    uint8 public decimals;
     string public name;
     string public symbol;
     
@@ -74,7 +74,7 @@ contract ERC20Interface
     // function name() public constant returns(string);
 
     // Returns decimal places designated for unit of token.
-    // function decimalPlaces() public returns(uint);
+    // function decimals() public returns(uint);
 
     // Send _value amount of tokens to address _to
     // function transfer(address _to, uint256 _value) public returns (bool success);
@@ -115,12 +115,12 @@ contract ERC20Token is Base, Math, ERC20Interface
 
     function ERC20Token(
         uint _supply,
-        uint8 _decimalPlaces,
+        uint8 _decimals,
         string _symbol,
         string _name)
     {
         totalSupply = _supply;
-        decimalPlaces = _decimalPlaces;
+        decimals = _decimals;
         symbol = _symbol;
         name = _name;
         balanceOf[msg.sender] = totalSupply;

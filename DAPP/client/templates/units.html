@@ -1,0 +1,17 @@
+<Template name="unit">
+	<button class="modal">
+		{{unitName}}
+	</button>
+</Template>
+
+<Template name="unitList">
+	<ul>
+		{{#each units}}
+		<li>
+			<button>
+				{{this}}
+			</button>
+		</li>
+		{{/each}}
+	</ul>
+</Template>

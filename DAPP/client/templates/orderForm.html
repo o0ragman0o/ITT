@@ -1,0 +1,36 @@
+<template name="orderForm">
+  <h3>Order Form</h3>
+  <div>
+    <input id="ordPrice" type="number" class="dapp-input sym-ether" min="{{priceMin}}" step="{{priceStep}}" placeholder="&Xi; {{priceMin}}" value="{{price}}"/>
+    <label for="orderPrice">
+      PRICE &Xi;
+    </label>
+  </div>
+  <div>
+    <input id="ordAmount" type="number" class="dapp-input" min="{{amountMin}}" step="{{amountStep}}" placeholder="0.000" value="{{amount}}"/>
+    <button id="setMaxAmount" for="orderAmount">
+      {{symbol}}
+    </button>
+  </div>
+  <div>
+    <input id="ordTotal" type="number" class="dapp-input" min="{{totalMin}}" step="{{totalStep}}" placeholder="{{totalMin}}" value="{{total}}"/>
+    <button id="setMaxTotal" for="orderTotal">
+      TOTAL &Xi;
+    </button>
+  </div>
+  <div>
+    <button id="buy_button" class="trade-button {{bidBuy}}">{{bidBuy}}</button>    
+    <button id="sell_button" class="trade-button {{askSell}}">{{askSell}}</button>
+  </div>
+</template>
+
+<template name="placeOrder">
+  <h3>Confirm Order</h3>
+  {{> dapp_identicon identity=address class="dapp-small"}} <h5>{{name}}</h5><br>
+  {{address}}<br>
+  <span class="{{swap}}">{{swap}}</span><br>
+  Price: &Xi;{{price}}<br>
+  Amount: {{amount}} {{symbol}}<br>
+  Total: &Xi;{{total}}
+  <!-- {{> dapp_selectGasPrice gas=21000 unit="ether"}} -->
+</template>

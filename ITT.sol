@@ -1,8 +1,8 @@
 /*
 file:   ITT.sol
-ver:    0.3.2
-updated:21-Sep-2016
-author: Darryl Morris
+ver:    0.3.4
+updated:1-Oct-2016
+author: Darryl Morris (o0ragman0o)
 email:  o0ragman0o AT gmail.com
 
 An ERC20 compliant token with currency
@@ -30,7 +30,7 @@ contract ITTInterface
 
 /* Constants */
 
-    string constant VERSION = "ITT 0.3.2";
+    string constant VERSION = "ITT 0.3.4";
     uint constant HEAD = 0;
     uint constant MINNUM = uint(1);
     // use only 128 bits of uint to prevent mul overflows.
@@ -251,28 +251,28 @@ contract ITT is ERC20Token, ITTInterface
         return volumes; 
     }
     
-    function numOrdersOf(address addr) public constant returns (uint)
+    function numOrdersOf(address _addr) public constant returns (uint)
     {
         uint c;
         uint p = MINNUM;
         while (p < MAXNUM) {
-            if (amounts[sha3(p, msg.sender)] > 0) c++;
+            if (amounts[sha3(p, _addr)] > 0) c++;
             p = priceBook.step(p, NEXT);
         }
         return c;
     }
     
-    function getOpenOrdersOf(address addr) public constant returns (uint[])
+    function getOpenOrdersOf(address _addr) public constant returns (uint[])
     {
         uint i;
         uint c;
         uint p = MINNUM;
-        uint[] memory open = new uint[](numOrdersOf(addr)*2);
+        uint[] memory open = new uint[](numOrdersOf(_addr)*2);
         p = MINNUM;
         while (p < MAXNUM) {
-            if (amounts[sha3(p, msg.sender)] > 0) {
+            if (amounts[sha3(p, _addr)] > 0) {
                 open[i++] = p;
-                open[i++] = amounts[sha3(p, msg.sender)];
+                open[i++] = amounts[sha3(p, _addr)];
             }
             p = priceBook.step(p, NEXT);
         }
@@ -364,7 +364,7 @@ contract ITT is ERC20Token, ITTInterface
         tmsg.side = _side;
         tmsg.make = _make;
         
-        // Cached state balances to memory and commit once after trade.
+        // Cache state balances to memory and commit to storage only once after trade.
         tmsg.ownTokens  = balanceOf[msg.sender];
         tmsg.ownEther = etherBalanceOf[msg.sender] + msg.value;
 
@@ -455,6 +455,7 @@ contract ITT is ERC20Token, ITTInterface
 
     function cancelIntl(TradeMessage tmsg) internal {
         uint amount = amounts[sha3(tmsg.price, msg.sender)];
+        if (amount == 0) throw;
         if (tmsg.price > spread(BID)) tmsg.ownTokens += amount; // was ask
         else tmsg.ownEther += tmsg.price * amount; // was bid
         closeOrder(tmsg.price, msg.sender);

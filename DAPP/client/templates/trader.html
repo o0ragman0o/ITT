@@ -1,0 +1,29 @@
+<template name="traderAccount">
+  <h3>Trading Account</h3>
+  <ul class="trader-account-list">
+    <li>
+      <button class="modal">
+        {{> dapp_identicon identity=account class="dapp-medium"}}
+        <h3>{{name}}</h3>
+        <span>{{account}}</span>
+        <h3>&Xi; {{balance}}</h3>
+      </button>
+    </li>  
+  </ul>
+</template>
+
+<template name="accountList">
+  <h3>Select Trading Account</h3>
+    <ul class="trader-account-list">
+    {{#each accounts}}
+    <li>
+      <button class="accButton">
+        {{> dapp_identicon identity=address class="dapp-medium"}}
+        <h3>{{name}}</h3>
+        <span>{{address}}</span>
+        <h3>&Xi; {{balance}}</h3>
+      </button>
+    </li>  
+    {{/each}}
+    </ul>
+</template>

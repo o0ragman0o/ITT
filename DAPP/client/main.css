@@ -1,0 +1,323 @@
+/* CSS declarations go here */
+
+/*h3 + h2 {
+  position: relative;
+  margin-left: -40px;
+	display: block;
+}
+*/
+
+.price {
+	width: 200px;
+	text-align: left;
+	padding-right: 5px;
+	display: inline-block;
+}
+
+.amount {
+	width: 200px;
+	text-align: left;
+	padding-left: 5px;
+	display: inline-block;
+}
+
+ul {
+  list-style: none;
+  list-style-image: none;
+}
+
+.num-field {
+	display: inline-block;
+  text-align: center;
+	width: 120px;
+  text-overflow: hidden;
+  /*border: 1px solid;*/
+}
+
+.dapp-banner {
+  display: block;
+  align-items: left;
+  height: 64px;
+  z-index: 40;
+  margin-top: -5px;
+  padding-top: 17.26666667px;
+  padding-bottom: 0;
+  box-sizing: content-box;
+  user-select: none;
+}
+
+
+
+.trader-account-list {
+  list-style-type: none;
+  overflow: auto;
+  padding-left: 0;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.trader-account-list > li {
+  display: block;
+  padding: 0;
+  margin: 0;
+}
+
+.trader-account-list li {
+  padding: 4.6px 0;
+  padding-left: 48px;
+  min-height: 46px;
+  position: relative;
+  overflow: hidden;
+  font-family: 'Source Sans Pro', 'Helvetica Neue', Helvetica, Arial, 'sans-serif';
+}
+
+.trader-account-list li button.selected {
+  min-height: 36.8px;
+  border-left: 3px solid #4a90e2;
+}
+
+.trader-account-list li button.selected .dapp-identicon {
+  margin-top: -2px;
+  margin-left: -2px;
+  border: 2px solid #ccc6c6;
+  width: 64px;
+  height: 64px;
+}
+
+.trader-account-list li button.selected figure {
+  position: absolute;
+  color: #fafafa;
+  right: 0;
+  top: 0;
+  font-size: 160%;
+  z-index: 10;
+  bottom: 0;
+  text-align: center;
+  padding-top: 4px;
+  padding: 9px 10px;
+  background: linear-gradient(to right, transparent, #4a90e2 50%);
+}
+
+.trader-account-list li button {
+  position: relative;
+  display: block;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 4.6px 0;
+  padding-left: 64px;
+  margin: -4.6px 0;
+  margin-left: -48px;
+  width: 100%;
+  height: 100%;
+  min-height: 36.8px;
+  font-family: 'Source Sans Pro', 'Helvetica Neue', Helvetica, Arial, 'sans-serif';
+  text-align: left;
+  border-left-color: #ccc6c6;
+  border-left-style: solid;
+  outline: none;
+  -webkit-transition: border 0.25s;
+  -moz-transition: border 0.25s;
+  -o-transition: border 0.25s;
+  transition: border 0.25s;
+}
+
+.trader-account-list li button:focus {
+  border-bottom: none !important;
+}
+
+.trader-account-list li button:hover {
+  border-left-width: 6px;
+  border-bottom: none !important;
+}
+
+.trader-account-list li button:active {
+  transform: scale(1) !important;
+}
+
+.trader-account-list li .dapp-identicon {
+  position: absolute;
+  top: 6.13333333px;
+  left: 8px;
+}
+
+.trader-account-list li h3 {
+  display: inline-block;
+  -o-text-overflow: ellipsis;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 100%;
+  display: block;
+  padding: 0;
+  margin: 0;
+  color: #4a90e2;
+  text-transform: none;
+  font-weight: 400;
+  font-size: 90%;
+  text-shadow: #fff 0 1px 0;
+}
+
+.trader-account-list li h3 + span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 75%;
+  opacity: 0.5;
+  color: #827a7a;
+}
+
+.trade-button {
+	width: 150px;
+	margin-top: 18.4px;
+	/*display: inline;*/
+	text-align: center;
+  border: 2px solid;
+  font-weight: bold;
+  text-transform: uppercase;
+  transition: background-color 0.25s;
+}
+
+.trade-button:disabled {
+  background-color: #e0e0e0;
+  color: #e0e0e0;
+  border-color: #e0e0e0;
+  cursor: not-allowed;  
+}
+
+.buy {
+  background-color: #20c520;
+  color: white;
+  border-color: #20c520;
+}
+
+.sell {
+  background-color: #4a90e2;
+  color: white;
+  border-color: #4a90e2;
+}
+
+.bid {
+  color: #4a90e2;
+  border-color: #4a90e2;
+}
+
+.ask {
+	color: #20c520;
+  border-color: #20c520;
+}
+
+.order-list{
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column-reverse;
+  max-height: 20em;
+  overflow: auto;
+  list-style-type: none;
+  list-style: none;
+  overflow: auto;
+  padding-left: 0;
+  padding: 0;
+  margin: 0;
+  /*-webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.1);*/
+
+}
+
+.unfilled{
+  max-height: 6em;
+}
+
+.market{
+  max-height: 20em;
+}
+
+
+
+.order-list li {
+  padding: 4.6px 0;
+  /*position: relative;*/
+  overflow: ellipsis;
+  font-family: 'Source Sans Pro', 'Helvetica Neue', Helvetica, Arial, 'sans-serif';
+}
+
+.priceQuote li {
+/*.order-list li button {*/
+  position: relative;
+  justify-content: center;
+  /*border-bottom-color: #ccc6c6;*/
+  border-bottom-style: solid;
+  -webkit-transition: border 0.25s;
+  -moz-transition: border 0.25s;
+  -o-transition: border 0.25s;
+  transition: all 0.25s;
+  /*transition:  0.25s;*/
+}
+
+.priceQuote li:hover {
+  margin-left: 6px;
+  transition: 0.25s;
+}
+
+.order-list li button.selected {
+  border-bottom: 3px solid #4a90e2;
+  /*margin-bottom: 3px;*/
+}
+
+.order-list li button:focus {
+}
+
+.priceQuote li:hover {
+/*.order-list li button:hover {*/
+  border-bottom-width: 3px;
+  margin-bottom: -3px;
+}
+
+
+.ittd-container {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  overflow: auto;
+  align-items: flex-start;
+  justify-content: space-between;
+  /*border: 1px solid;*/
+  /*justify-content: center;*/
+}
+
+.ittd-panel {
+  /*width: 430px;*/
+  /*margin: 5px;*/
+  /*border: 1px solid;*/
+  /*align-self: auto;*/
+
+}
+
+input[type=number] {
+	text-align: right;
+}
+
+label {
+
+  /*} + input[type=number]{*/
+  position: relative;
+  margin-top: -100;
+}
+
+.logo {
+  width: 64px;
+  height: 64px;
+  shape-rendering:crispEdges;
+}
+
+
+.sym-ether:before {
+  content: "&Xi; Testing";
+  font-family: 'Source Sans Pro', 'Helvetica Neue', Helvetica, Arial, Sans;
+
+}
+
+.dapp-footer {
+  color: #f3f1f1;
+
+}

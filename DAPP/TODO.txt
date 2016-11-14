@@ -1,0 +1,7 @@
+Sort out question modals - button text
+strange invalid input on integer amounts
+validate inputs
+fix trade button border styling
+collect sale events
+chart sale events
+fix reactivity
