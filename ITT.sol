@@ -128,19 +128,22 @@ contract ITTInterface
     /// @param _amount The requested amount of tokens to buy.
     /// @param _make A value of true will make an order if not market filled.
     function sell (uint _askPrice, uint _amount, bool _make)
-        public returns (bool);
+        external returns (bool);
 
     /// @notice Will withdraw `_ether` to your account.
     /// @param _ether The amount to withdraw
-    function withdraw(uint _ether) public returns (bool success_);
+    function withdraw(uint _ether)
+        external returns (bool success_);
 
     /// @notice Cancel order at `_price`
     /// @param _price The price at which the order was placed.
-    function cancel(uint _price) public returns (bool);
+    function cancel(uint _price) 
+        external returns (bool);
 
     /// @notice Will set trading state to `_trading`
     /// @param _trading State to set trading to.
-    function setTrading(bool _trading) public returns (bool);
+    function setTrading(bool _trading) 
+        external returns (bool);
 }
 
 
@@ -308,7 +311,7 @@ contract ITT is ERC20Token, ITTInterface
     }
 
     function sell (uint _askPrice, uint _amount, bool _make)
-        public
+        external
         canEnter
         isTrading
         isValidSell(_askPrice, _amount)
@@ -319,7 +322,7 @@ contract ITT is ERC20Token, ITTInterface
     }
 
     function withdraw(uint _ether)
-        public
+        external
         canEnter
         hasEther(msg.sender, _ether)
         returns (bool success_)
@@ -330,7 +333,7 @@ contract ITT is ERC20Token, ITTInterface
     }
 
     function cancel(uint _price)
-        public
+        external
         canEnter
         returns (bool)
     {
@@ -345,7 +348,7 @@ contract ITT is ERC20Token, ITTInterface
     }
     
     function setTrading(bool _trading)
-        public
+        external
         onlyOwner
         canEnter
         returns (bool)
