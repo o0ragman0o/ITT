@@ -1,7 +1,7 @@
 /*
 file:   ITT.sol
-ver:    0.3.4
-updated:1-Oct-2016
+ver:    0.3.5
+updated:17-Nov-2016
 author: Darryl Morris (o0ragman0o)
 email:  o0ragman0o AT gmail.com
 
@@ -30,7 +30,7 @@ contract ITTInterface
 
 /* Constants */
 
-    string constant VERSION = "ITT 0.3.4";
+    string constant VERSION = "ITT 0.3.5";
     uint constant HEAD = 0;
     uint constant MINNUM = uint(1);
     // use only 128 bits of uint to prevent mul overflows.
@@ -45,14 +45,16 @@ contract ITTInterface
     // minimum gas required to prevent out of gas on 'take' loop
     uint constant MINGAS = 100000;
 
-    // For staging and commiting trade details 
+    // For staging and commiting trade details.  This saves unneccessary state
+    // change gas usage during multi order takes but does increase logic
+    // complexity when encountering 'trade with self' orders
     struct TradeMessage {
         bool make;
         bool side;
         uint price;
         uint tradeAmount;
-        uint ownTokens;
-        uint ownEther;
+        uint balanceOf;
+        uint etherBalanceOf;
     }
 
 /* State Valiables */
@@ -334,11 +336,11 @@ contract ITT is ERC20Token, ITTInterface
     {
         TradeMessage memory tmsg;
         tmsg.price = _price;
-        tmsg.ownTokens = balanceOf[msg.sender];
-        tmsg.ownEther = etherBalanceOf[msg.sender];
+        tmsg.balanceOf = balanceOf[msg.sender];
+        tmsg.etherBalanceOf = etherBalanceOf[msg.sender];
         cancelIntl(tmsg);
-        balanceOf[msg.sender] = tmsg.ownTokens;
-        etherBalanceOf[msg.sender] = tmsg.ownEther;
+        balanceOf[msg.sender] = tmsg.balanceOf;
+        etherBalanceOf[msg.sender] = tmsg.etherBalanceOf;
         return true;
     }
     
@@ -365,14 +367,14 @@ contract ITT is ERC20Token, ITTInterface
         tmsg.make = _make;
         
         // Cache state balances to memory and commit to storage only once after trade.
-        tmsg.ownTokens  = balanceOf[msg.sender];
-        tmsg.ownEther = etherBalanceOf[msg.sender] + msg.value;
+        tmsg.balanceOf  = balanceOf[msg.sender];
+        tmsg.etherBalanceOf = etherBalanceOf[msg.sender] + msg.value;
 
         take(tmsg);
         make(tmsg);
         
-        balanceOf[msg.sender] = tmsg.ownTokens;
-        etherBalanceOf[msg.sender] = tmsg.ownEther;
+        balanceOf[msg.sender] = tmsg.balanceOf;
+        etherBalanceOf[msg.sender] = tmsg.etherBalanceOf;
     }
     
     function take (TradeMessage tmsg)
@@ -382,48 +384,57 @@ contract ITT is ERC20Token, ITTInterface
         bytes32 orderHash;
         uint takeAmount;
         uint takeEther;
+        // use of signed math on unsigned ints is intentional
         uint sign = tmsg.side ? uint(1) : uint(-1);
         uint bestPrice = spread(!tmsg.side);
 
         // Loop with available gas to take orders
-        while (cmpEq(tmsg.price, bestPrice, !tmsg.side) && msg.gas > MINGAS)
+        while (
+            tmsg.tradeAmount > 0 &&
+            cmpEq(tmsg.price, bestPrice, !tmsg.side) && 
+            msg.gas > MINGAS
+        )
         {
-            Log("Taking");
             maker = address(orderFIFOs[bestPrice].step(HEAD, NEXT));
             orderHash = sha3(bestPrice, maker);
-            takeAmount = amounts[orderHash];
-            if (msg.sender == maker) {
-                // Can't trade with self so cancel order if owned by taker.
-                Log("Can't trade with self.");
-                cancelIntl(tmsg);
-                bestPrice = spread(!tmsg.side);
-                continue;
-            }
-            if (takeAmount > tmsg.tradeAmount) {
+            if (tmsg.tradeAmount < amounts[orderHash]) {
                 // Prepare to take partial order
                 amounts[orderHash] -= tmsg.tradeAmount;
                 takeAmount = tmsg.tradeAmount;
                 tmsg.tradeAmount = 0;
             } else {
                 // Prepare to take full order
+                takeAmount = amounts[orderHash];
                 tmsg.tradeAmount -= takeAmount;
                 closeOrder(bestPrice, maker);
             }
             takeEther = bestPrice * takeAmount;
-            tmsg.ownEther += takeEther * sign;
-            tmsg.ownTokens -= takeAmount * sign;
+            // signed multiply on uints is intentional
+            tmsg.etherBalanceOf += takeEther * sign;
+            tmsg.balanceOf -= takeAmount * sign;
             if (tmsg.side) {
                 // Sell to bidder
-                balanceOf[maker] += takeAmount;
+                if (msg.sender == maker) {
+                    // bidder is self
+                    tmsg.balanceOf += takeAmount;
+                } else {
+                    balanceOf[maker] += takeAmount;
+                }
             } else {
                 // Buy from asker;
-                etherBalanceOf[maker] += takeEther;
+                if (msg.sender == maker) {
+                    // asker is self
+                    tmsg.etherBalanceOf += takeEther;
+                } else {                
+                    etherBalanceOf[maker] += takeEther;
+                }
             }
+            // prep for next order
             bestPrice = spread(!tmsg.side);
             Sale (bestPrice, takeAmount, msg.sender, maker);
         }
     }
-    
+
     function make(TradeMessage tmsg)
         internal
     {
@@ -445,19 +456,19 @@ contract ITT is ERC20Token, ITTInterface
         orderFIFOs[tmsg.price].push(uint(msg.sender), PREV); 
 
         if (tmsg.side) {
-            tmsg.ownTokens -= tmsg.tradeAmount;
+            tmsg.balanceOf -= tmsg.tradeAmount;
             Ask (tmsg.price, tmsg.tradeAmount, msg.sender);
         } else {
-            tmsg.ownEther -= tmsg.tradeAmount * tmsg.price;
+            tmsg.etherBalanceOf -= tmsg.tradeAmount * tmsg.price;
             Bid (tmsg.price, tmsg.tradeAmount, msg.sender);
         }
     }
 
     function cancelIntl(TradeMessage tmsg) internal {
         uint amount = amounts[sha3(tmsg.price, msg.sender)];
-        if (amount == 0) throw;
-        if (tmsg.price > spread(BID)) tmsg.ownTokens += amount; // was ask
-        else tmsg.ownEther += tmsg.price * amount; // was bid
+        if (amount == 0) return;
+        if (tmsg.price > spread(BID)) tmsg.balanceOf += amount; // was ask
+        else tmsg.etherBalanceOf += tmsg.price * amount; // was bid
         closeOrder(tmsg.price, msg.sender);
     }
 
