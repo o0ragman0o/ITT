@@ -1,12 +1,12 @@
 /*
-file: Base.sol
-ver:    0.2.0
-updated:21-Sep-2016
-author: Darryl Morris
+file:   Base.sol
+ver:    0.2.1
+updated:18-Nov-2016
+author: Darryl Morris (o0ragman0o)
 email:  o0ragman0o AT gmail.com
 
-An Ethereum Solidity contract providing functional protection
-to deriving contracts. 
+An basic contract furnishing inheriting contracts with ownership, reentry
+protection and safe sending functions.
 
 This software is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -21,7 +21,7 @@ contract Base
 {
 /* Constants */
 
-    string constant VERSION = "Base 0.1.1";
+    string constant VERSION = "Base 0.1.1 \n";
 
 /* State Variables */
 
@@ -31,6 +31,7 @@ contract Base
 /* Events */
 
     event Log(string message);
+    event ChangedOwner(address indexed oldOwner, address indexed newOwner);
 
 /* Modifiers */
 
@@ -76,7 +77,7 @@ contract Base
         return VERSION;
     }
 
-    function thisBalance() public constant returns(uint) {
+    function contractBalance() public constant returns(uint) {
         return this.balance;
     }
 
@@ -85,6 +86,7 @@ contract Base
         public onlyOwner returns (bool)
     {
         owner = _newOwner;
+        ChangedOwner(msg.sender, owner);
         return true;
     }
     

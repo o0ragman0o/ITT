@@ -1,11 +1,11 @@
 /*
 file:   Math.sol
-ver:    0.2.0-alpha
-updated:9-Sep-2016
+ver:    0.2.0
+updated:18-Nov-2016
 author: Darryl Morris
 email:  o0ragman0o AT gmail.com
 
-An inheritable contract containing common constants, modifiers and functions.
+An inheritable contract containing math functions and comparitors.
 
 This software is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -21,6 +21,7 @@ contract Math
 
 /* Constants */
 
+    string constant VERSION = "Math 0.0.1 \n";
     uint constant NULL = 0;
     bool constant LT = false;
     bool constant GT = true;
@@ -35,6 +36,10 @@ contract Math
 /* Modifiers */
 
 /* Functions */
+    function version() public constant returns (string)
+    {
+        return VERSION;
+    }
 
     function assert(bool assertion) internal constant
     {
@@ -57,6 +62,25 @@ contract Math
         return (a==b) || ((a < b) != _sym);
     }
     
+    /// Trichotomous comparitor
+    /// a < b returns -1
+    /// a == b returns 0
+    /// a > b returns 1
+/*    function triCmp(uint a, uint b) internal constant returns (bool)
+    {
+        uint c = a - b;
+        return c & c & (0 - 1);
+    }
+    
+    function nSign(uint a) internal returns (uint)
+    {
+        return a & 2^255;
+    }
+    
+    function neg(uint a) internal returns (uint) {
+        return 0 - a;
+    }
+*/    
     function safeMul(uint a, uint b) internal constant returns (uint)
     {
       uint c = a * b;

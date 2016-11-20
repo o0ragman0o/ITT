@@ -1,7 +1,7 @@
 /*
 file:   ERC20.sol
-ver:    0.2.2
-updated:21-Sep-2016
+ver:    0.2.3
+updated:18-Nov-2016
 author: Darryl Morris
 email:  o0ragman0o AT gmail.com
 
@@ -25,16 +25,17 @@ contract ERC20Interface
 /* Structs */
 
 /* Constants */
-    string constant VERSION = "ERC20 0.2.3-o0ragman0o";
+    string constant VERSION = "ERC20 0.2.3-o0ragman0o\nMath 0.0.1\nBase 0.1.1\n";
 
 /* State Valiables */
     uint public totalSupply;
-    uint8 public decimals;
+    uint8 public decimalPlaces;
     string public name;
     string public symbol;
     
     // Token ownership mapping
-    mapping (address => uint) public balanceOf;
+    // mapping (address => uint) public balanceOf;
+    mapping (address => uint) balance;
     
     // Transfer allowances mapping
     mapping (address => mapping (address => uint)) public allowance;
@@ -58,9 +59,6 @@ contract ERC20Interface
 
     /* State variable Accessor Functions (for reference - leave commented) */
 
-    // Get the account balance of another account with address _owner
-    // function balanceOf(address tokenHolder) public constant returns (uint);
-
     // Returns the allowable transfer of tokens by a proxy
     // function allowance (address tokenHolders, address proxy, uint allowance) public constant returns (uint);
 
@@ -74,7 +72,7 @@ contract ERC20Interface
     // function name() public constant returns(string);
 
     // Returns decimal places designated for unit of token.
-    // function decimals() public returns(uint);
+    // function decimalPlaces() public returns(uint);
 
     // Send _value amount of tokens to address _to
     // function transfer(address _to, uint256 _value) public returns (bool success);
@@ -101,13 +99,13 @@ contract ERC20Token is Base, Math, ERC20Interface
 /* Modifiers */
 
     modifier isAvailable(uint _amount) {
-        if (_amount > balanceOf[msg.sender]) throw;
+        if (_amount > balance[msg.sender]) throw;
         _;
     }
 
     modifier isAllowed(address _from, uint _amount) {
         if (_amount > allowance[_from][msg.sender] ||
-           _amount > balanceOf[_from]) throw;
+           _amount > balance[_from]) throw;
         _;        
     }
 
@@ -115,55 +113,67 @@ contract ERC20Token is Base, Math, ERC20Interface
 
     function ERC20Token(
         uint _supply,
-        uint8 _decimals,
+        uint8 _decimalPlaces,
         string _symbol,
         string _name)
     {
         totalSupply = _supply;
-        decimals = _decimals;
+        decimalPlaces = _decimalPlaces;
         symbol = _symbol;
         name = _name;
-        balanceOf[msg.sender] = totalSupply;
+        balance[msg.sender] = totalSupply;
+    }
+    
+    function version() public constant returns(string) {
+        return VERSION;
+    }
+    
+    function balanceOf(address _addr)
+        public
+        constant
+        returns (uint)
+    {
+        return balance[_addr];
     }
 
     // Send _value amount of tokens to address _to
     function transfer(address _to, uint256 _value)
-        public
+        external
         canEnter
         isAvailable(_value)
-        returns (bool success)
+        returns (bool)
     {
-        safeSub(balanceOf[msg.sender], _value);
-        safeAdd(balanceOf[_to], _value);
+        balance[msg.sender] = safeSub(balance[msg.sender], _value);
+        balance[_to] = safeAdd(balance[_to], _value);
         Transfer(msg.sender, _to, _value);
-        success = true;
+        return true;
     }
 
     // Send _value amount of tokens from address _from to address _to
     function transferFrom(address _from, address _to, uint256 _value)
-        public
+        external
         canEnter
         isAllowed(_from, _value)
-        returns (bool success)
+        returns (bool)
     {
-        safeSub(balanceOf[_from], _value);
-        safeAdd(balanceOf[_to], _value);
-        safeSub(allowance[_from][msg.sender], _value);
+        balance[_from] = safeSub(balance[_from], _value);
+        balance[_to] = safeAdd(balance[_to], _value);
+        allowance[_from][msg.sender] = safeSub(allowance[_from][msg.sender], _value);
         Transfer(msg.sender, _to, _value);
-        success = true;
+        return true;
     }
 
     // Allow _spender to withdraw from your account, multiple times, up to the
     // _value amount. If this function is called again it overwrites the current
     // allowance with _value.
     function approve(address _spender, uint256 _value)
-        public
+        external
         canEnter
         returns (bool success)
     {
-        if (balanceOf[msg.sender] == 0) throw;
+        if (balance[msg.sender] == 0) throw;
         allowance[msg.sender][_spender] = _value;
         Approval(msg.sender, _spender, _value);
-        success = true;
+        return true;
     }
 }
