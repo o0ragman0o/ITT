@@ -93,7 +93,7 @@ library LibCLLu {
         self.cll[a][d] = b;
     }
 
-    // Insert node `b` beside and existing node `a` in direction `d`.
+    // Insert node `b` beside existing node `a` in direction `d`.
     function insert (CLL storage self, uint a, uint b, bool d) internal  {
         uint c = self.cll[a][d];
         stitch (self, a, b, d);
