@@ -1,7 +1,7 @@
 /*
 file:   LibCLL.sol
-ver:    0.3.1
-updated:21-Sep-2016
+ver:    0.3.2
+updated:7-Dec-2016
 author: Darryl Morris
 email:  o0ragman0o AT gmail.com
 
@@ -26,7 +26,7 @@ pragma solidity ^0.4.0;
 // LibCLL using `uint` keys
 library LibCLLu {
 
-    string constant VERSION = "LibCLLu 0.3.1";
+    string constant public VERSION = "LibCLLu 0.3.2";
     uint constant NULL = 0;
     uint constant HEAD = NULL;
     bool constant PREV = false;
@@ -37,10 +37,6 @@ library LibCLLu {
     }
 
     // n: node id  d: direction  r: return node id
-
-    function version() internal constant returns (string) {
-        return VERSION;
-    }
 
     // Return existential state of a list.
     function exists(CLL storage self)
@@ -206,5 +202,3 @@ library LibCLLi {
         return remove(self, step(self, HEAD, d));
     }
 }
-
-

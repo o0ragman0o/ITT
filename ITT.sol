@@ -1,7 +1,7 @@
 /*
 file:   ITT.sol
-ver:    0.3.6
-updated:18-Nov-2016
+ver:    0.3.7
+updated:7-Dec-2016
 author: Darryl Morris (o0ragman0o)
 email:  o0ragman0o AT gmail.com
 
@@ -30,7 +30,7 @@ contract ITTInterface
 
 /* Constants */
 
-    string constant VERSION = "ITT 0.3.6\nERC20 0.2.3-o0ragman0o\nMath 0.0.1\nBase 0.1.1\n";
+    string constant public VERSION = "ITT 0.3.7";
     uint constant HEAD = 0;
     uint constant MINNUM = uint(1);
     // use only 128 bits of uint to prevent mul overflows.
@@ -89,7 +89,7 @@ contract ITTInterface
     event Bid (uint indexed price, uint amount, address indexed trader);
 
     // Triggered on a filled order
-    event Sale (uint indexed price, uint amount, address indexed buyer, address indexed seller);
+    event Sale (uint indexed price, uint amount, address indexed buyer, address indexed seller, bool side);
 
     // Triggered when trading is started or halted
     event Trading(bool trading);
@@ -214,10 +214,6 @@ contract ITT is ERC20Token, ITTInterface
     }
 
 /* Functions Getters */
-
-    function version() public constant returns(string) {
-        return VERSION;
-    }
 
     function etherBalanceOf(address _addr) public constant returns (uint) {
         return etherBalance[_addr];
@@ -437,9 +433,9 @@ contract ITT is ERC20Token, ITTInterface
                     etherBalance[maker] += takeEther;
                 }
             }
+            Sale (bestPrice, takeAmount, msg.sender, maker, tmsg.side);
             // prep for next order
             bestPrice = spread(!tmsg.side);
-            Sale (bestPrice, takeAmount, msg.sender, maker);
         }
     }
 

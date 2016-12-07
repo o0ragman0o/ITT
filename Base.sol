@@ -1,7 +1,7 @@
 /*
 file:   Base.sol
-ver:    0.2.1
-updated:18-Nov-2016
+ver:    0.2.2
+updated:7-Dec-2016
 author: Darryl Morris (o0ragman0o)
 email:  o0ragman0o AT gmail.com
 
@@ -21,7 +21,7 @@ contract Base
 {
 /* Constants */
 
-    string constant VERSION = "Base 0.1.1 \n";
+    string constant public VERSION = "Base 0.2.2";
 
 /* State Variables */
 
@@ -72,10 +72,6 @@ contract Base
 /* Functions */
 
     function Base() { owner = msg.sender; }
-
-    function version() public constant returns (string) {
-        return VERSION;
-    }
 
     function contractBalance() public constant returns(uint) {
         return this.balance;

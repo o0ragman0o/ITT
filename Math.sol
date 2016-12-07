@@ -1,7 +1,7 @@
 /*
 file:   Math.sol
-ver:    0.2.0
-updated:18-Nov-2016
+ver:    0.2.1
+updated:7-Dec-2016
 author: Darryl Morris
 email:  o0ragman0o AT gmail.com
 
@@ -21,7 +21,7 @@ contract Math
 
 /* Constants */
 
-    string constant VERSION = "Math 0.0.1 \n";
+    string constant public VERSION = "Math 0.2.1";
     uint constant NULL = 0;
     bool constant LT = false;
     bool constant GT = true;
@@ -36,11 +36,6 @@ contract Math
 /* Modifiers */
 
 /* Functions */
-    function version() public constant returns (string)
-    {
-        return VERSION;
-    }
-
     function assert(bool assertion) internal constant
     {
       if (!assertion) throw;

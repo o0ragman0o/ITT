@@ -1,7 +1,7 @@
 /*
 file:   ERC20.sol
-ver:    0.2.3
-updated:18-Nov-2016
+ver:    0.2.4
+updated:7-Dec-2016
 author: Darryl Morris
 email:  o0ragman0o AT gmail.com
 
@@ -25,7 +25,7 @@ contract ERC20Interface
 /* Structs */
 
 /* Constants */
-    string constant VERSION = "ERC20 0.2.3-o0ragman0o\nMath 0.0.1\nBase 0.1.1\n";
+    string constant public VERSION = "ERC20 0.2.4-o0ragman0o";
 
 /* State Valiables */
     uint public totalSupply;
@@ -34,7 +34,6 @@ contract ERC20Interface
     string public symbol;
     
     // Token ownership mapping
-    // mapping (address => uint) public balanceOf;
     mapping (address => uint) balance;
     
     // Transfer allowances mapping
@@ -123,11 +122,7 @@ contract ERC20Token is Base, Math, ERC20Interface
         name = _name;
         balance[msg.sender] = totalSupply;
     }
-    
-    function version() public constant returns(string) {
-        return VERSION;
-    }
-    
+        
     function balanceOf(address _addr)
         public
         constant
