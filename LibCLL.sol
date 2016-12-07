@@ -1,7 +1,7 @@
 /*
 file:   LibCLL.sol
-ver:    0.3.2
-updated:7-Dec-2016
+ver:    0.3.3
+updated:8-Dec-2016
 author: Darryl Morris
 email:  o0ragman0o AT gmail.com
 
@@ -14,11 +14,11 @@ functionality which can be used in conjunction with an array or mapping.
 NOTICE: This library uses internal functions only and so cannot be compiled
 and deployed independently from its calling contract.
 
-This library is distributed in the hope that it will be useful,
+This software is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU lesser General Public License for more details.
-<http://www.gnu.org/licenses/>.
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+See MIT Licence for further details.
+<https://opensource.org/licenses/MIT>.
 */
 
 pragma solidity ^0.4.0;
@@ -26,7 +26,7 @@ pragma solidity ^0.4.0;
 // LibCLL using `uint` keys
 library LibCLLu {
 
-    string constant public VERSION = "LibCLLu 0.3.2";
+    string constant public VERSION = "LibCLLu 0.3.3";
     uint constant NULL = 0;
     uint constant HEAD = NULL;
     bool constant PREV = false;
@@ -116,7 +116,7 @@ library LibCLLu {
 // LibCLL using `int` keys
 library LibCLLi {
 
-    string constant VERSION = "LibCLLi 0.3.1";
+    string constant public VERSION = "LibCLLi 0.3.3";
     int constant NULL = 0;
     int constant HEAD = NULL;
     bool constant PREV = false;
@@ -127,10 +127,6 @@ library LibCLLi {
     }
 
     // n: node id  d: direction  r: return node id
-
-    function version() internal constant returns (string) {
-        return VERSION;
-    }
 
     // Return existential state of a node. n == HEAD returns list existence.
     function exists(CLL storage self, int n) internal constant returns (bool) {

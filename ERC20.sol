@@ -1,17 +1,17 @@
 /*
 file:   ERC20.sol
-ver:    0.2.4
-updated:7-Dec-2016
+ver:    0.2.5
+updated:8-Dec-2016
 author: Darryl Morris
 email:  o0ragman0o AT gmail.com
 
-An ERC20 compliant token.
+An ERC20 compliant token with reentry protection and safe math.
 
 This software is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU lesser General Public License for more details.
-<http://www.gnu.org/licenses/>.
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+See MIT Licence for further details.
+<https://opensource.org/licenses/MIT>.
 */
 
 pragma solidity ^0.4.0;
@@ -25,7 +25,7 @@ contract ERC20Interface
 /* Structs */
 
 /* Constants */
-    string constant public VERSION = "ERC20 0.2.4-o0ragman0o";
+    string constant public VERSION = "ERC20 0.2.5-o0ragman0o";
 
 /* State Valiables */
     uint public totalSupply;

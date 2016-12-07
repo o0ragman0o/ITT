@@ -1,7 +1,7 @@
 /*
 file:   Math.sol
 ver:    0.2.1
-updated:7-Dec-2016
+updated:8-Dec-2016
 author: Darryl Morris
 email:  o0ragman0o AT gmail.com
 

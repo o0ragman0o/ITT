@@ -1,7 +1,7 @@
 /*
 file:   ITT.sol
-ver:    0.3.7
-updated:7-Dec-2016
+ver:    0.3.8
+updated:8-Dec-2016
 author: Darryl Morris (o0ragman0o)
 email:  o0ragman0o AT gmail.com
 
@@ -11,9 +11,9 @@ Token' (ITT).
 
 This software is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU lesser General Public License for more details.
-<http://www.gnu.org/licenses/>.
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+See MIT Licence for further details.
+<https://opensource.org/licenses/MIT>.
 */
 
 pragma solidity ^0.4.0;
@@ -30,7 +30,7 @@ contract ITTInterface
 
 /* Constants */
 
-    string constant public VERSION = "ITT 0.3.7";
+    string constant public VERSION = "ITT 0.3.8";
     uint constant HEAD = 0;
     uint constant MINNUM = uint(1);
     // use only 128 bits of uint to prevent mul overflows.
