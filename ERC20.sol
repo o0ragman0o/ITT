@@ -16,8 +16,8 @@ See MIT Licence for further details.
 
 pragma solidity ^0.4.0;
 
-import "Math.sol";
-import "Base.sol";
+import "./Math.sol";
+import "./Base.sol";
 
 // ERC20 Standard Token Interface with safe maths and reentry protection
 contract ERC20Interface
