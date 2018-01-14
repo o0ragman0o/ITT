@@ -37,7 +37,7 @@ contract Base
 
     // To throw call not made by owner
     modifier onlyOwner() {
-        if (msg.sender != owner) throw;
+        require(msg.sender == owner);
         _;
     }
 
@@ -48,7 +48,7 @@ contract Base
     //   Protected functions cannot use the `return` keyword
     //   Protected functions return values must be through return parameters.
     modifier preventReentry() {
-        if (mutex) throw;
+        require(!mutex);
         else mutex = true;
         _;
         delete mutex;
@@ -59,13 +59,13 @@ contract Base
     // to protect against reentry if a `mutextProtect` function is already
     // on the call stack.
     modifier noReentry() {
-        if (mutex) throw;
+        require(!mutex);
         _;
     }
 
     // Same as noReentry() but intended to be overloaded
     modifier canEnter() {
-        if (mutex) throw;
+        require(!mutex);
         _;
     }
     
@@ -91,7 +91,7 @@ contract Base
         preventReentry()
         returns (bool success_)
     {
-        if(!_recipient.call.value(_ether)()) throw;
+        require(_recipient.call.value(_ether)());
         success_ = true;
     }
 }
