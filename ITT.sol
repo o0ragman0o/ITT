@@ -18,10 +18,10 @@ See MIT Licence for further details.
 
 pragma solidity ^0.4.0;
 
-import "Base.sol";
-import "Math.sol";
-import "ERC20.sol";
-import "LibCLL.sol";
+import "./Base.sol";
+import "./Math.sol";
+import "./ERC20.sol";
+import "./LibCLL.sol";
 
 contract ITTInterface
 {
