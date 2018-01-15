@@ -299,7 +299,7 @@ contract ITT is ERC20Token, ITTInterface
 // worry about rewritting the logic.
 
     function buy (uint _bidPrice, uint _amount, bool _make)
-	public
+	external
         payable
         canEnter
         isTrading
