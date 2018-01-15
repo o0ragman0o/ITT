@@ -43,8 +43,7 @@ library LibCLLu {
         internal
         view returns (bool)
     {
-        if (self.cll[HEAD][PREV] != HEAD || self.cll[HEAD][NEXT] != HEAD)
-            return true;
+        return (self.cll[HEAD][PREV] != HEAD || self.cll[HEAD][NEXT] != HEAD);
     }
     
     // Returns the number of elements in the list
@@ -130,8 +129,7 @@ library LibCLLi {
 
     // Return existential state of a node. n == HEAD returns list existence.
     function exists(CLL storage self, int n) internal view returns (bool) {
-        if (self.cll[HEAD][PREV] != HEAD || self.cll[HEAD][NEXT] != HEAD)
-            return true;
+        return (self.cll[n][PREV] != HEAD || self.cll[n][NEXT] != HEAD);
     }
     // Returns the number of elements in the list
     function sizeOf(CLL storage self) internal view returns (uint r) {

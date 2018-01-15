@@ -72,7 +72,7 @@ contract ITTInterface
     mapping (uint => LibCLLu.CLL) orderFIFOs;
     
     // Order amounts are stored in a seperate lookup. The keys of this mapping
-    // are `sha3` hashes of the price and trader address.
+    // are `keccak256` hashes of the price and trader address.
     // This mapping prevents more than one order at a particular price.
     mapping (bytes32 => uint) amounts;
 
@@ -225,10 +225,10 @@ contract ITT is ERC20Token, ITTInterface
 
     function getAmount(uint _price, address _trader) 
         public view returns(uint) {
-        return amounts[sha3(_price, _trader)];
+        return amounts[keccak256(_price, _trader)];
     }
 
-    function sizeOf(uint l) view returns (uint s) {
+    function sizeOf(uint l) public view returns (uint s) {
         if(l == 0) return priceBook.sizeOf();
         return orderFIFOs[l].sizeOf();
     }
@@ -237,7 +237,7 @@ contract ITT is ERC20Token, ITTInterface
     {
         uint n = orderFIFOs[_price].step(HEAD,NEXT);
         while (n != HEAD) { 
-            v_ += amounts[sha3(_price, address(n))];
+            v_ += amounts[keccak256(_price, address(n))];
             n = orderFIFOs[_price].step(n, NEXT);
         }
         return;
@@ -261,7 +261,7 @@ contract ITT is ERC20Token, ITTInterface
         uint c;
         uint p = MINNUM;
         while (p < MAXNUM) {
-            if (amounts[sha3(p, _addr)] > 0) c++;
+            if (amounts[keccak256(p, _addr)] > 0) c++;
             p = priceBook.step(p, NEXT);
         }
         return c;
@@ -270,14 +270,13 @@ contract ITT is ERC20Token, ITTInterface
     function getOpenOrdersOf(address _addr) public view returns (uint[])
     {
         uint i;
-        uint c;
         uint p = MINNUM;
         uint[] memory open = new uint[](numOrdersOf(_addr)*2);
         p = MINNUM;
         while (p < MAXNUM) {
-            if (amounts[sha3(p, _addr)] > 0) {
+            if (amounts[keccak256(p, _addr)] > 0) {
                 open[i++] = p;
-                open[i++] = amounts[sha3(p, _addr)];
+                open[i++] = amounts[keccak256(p, _addr)];
             }
             p = priceBook.step(p, NEXT);
         }
@@ -300,6 +299,7 @@ contract ITT is ERC20Token, ITTInterface
 // worry about rewritting the logic.
 
     function buy (uint _bidPrice, uint _amount, bool _make)
+	public
         payable
         canEnter
         isTrading
@@ -399,7 +399,7 @@ contract ITT is ERC20Token, ITTInterface
         )
         {
             maker = address(orderFIFOs[bestPrice].step(HEAD, NEXT));
-            orderHash = sha3(bestPrice, maker);
+            orderHash = keccak256(bestPrice, maker);
             if (tmsg.tradeAmount < amounts[orderHash]) {
                 // Prepare to take partial order
                 amounts[orderHash] = safeSub(amounts[orderHash], tmsg.tradeAmount);
@@ -444,7 +444,7 @@ contract ITT is ERC20Token, ITTInterface
     {
         bytes32 orderHash;
         if (tmsg.tradeAmount == 0 || !tmsg.make || msg.gas < MINGAS) return;
-        orderHash = sha3(tmsg.price, msg.sender);
+        orderHash = keccak256(tmsg.price, msg.sender);
         if (amounts[orderHash] != 0) {
             // Cancel any pre-existing owned order at this price
             cancelIntl(tmsg);
@@ -469,7 +469,7 @@ contract ITT is ERC20Token, ITTInterface
     }
 
     function cancelIntl(TradeMessage tmsg) internal {
-        uint amount = amounts[sha3(tmsg.price, msg.sender)];
+        uint amount = amounts[keccak256(tmsg.price, msg.sender)];
         if (amount == 0) return;
         if (tmsg.price > spread(BID)) tmsg.balance += amount; // was ask
         else tmsg.etherBalance += tmsg.price * amount; // was bid
@@ -481,6 +481,6 @@ contract ITT is ERC20Token, ITTInterface
         if (!orderFIFOs[_price].exists())  {
             priceBook.remove(_price);
         }
-        delete amounts[sha3(_price, _trader)];
+        delete amounts[keccak256(_price, _trader)];
     }
 }
