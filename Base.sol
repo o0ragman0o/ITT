@@ -71,7 +71,7 @@ contract Base
     
 /* Functions */
 
-    function Base() { owner = msg.sender; }
+    function Base() public { owner = msg.sender; }
 
     function contractBalance() public constant returns(uint) {
         return this.balance;

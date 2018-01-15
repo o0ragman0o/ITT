@@ -59,16 +59,16 @@ contract ERC20Interface
     /* State variable Accessor Functions (for reference - leave commented) */
 
     // Returns the allowable transfer of tokens by a proxy
-    // function allowance (address tokenHolders, address proxy, uint allowance) public constant returns (uint);
+    // function allowance (address tokenHolders, address proxy, uint allowance) public view returns (uint);
 
     // Get the total token supply
-    // function totalSupply() public constant returns (uint);
+    // function totalSupply() public view returns (uint);
 
     // Returns token symbol
-    // function symbol() public constant returns(string);
+    // function symbol() public view returns(string);
 
     // Returns token symbol
-    // function name() public constant returns(string);
+    // function name() public view returns(string);
 
     // Returns decimal places designated for unit of token.
     // function decimalPlaces() public returns(uint);
@@ -98,13 +98,13 @@ contract ERC20Token is Base, Math, ERC20Interface
 /* Modifiers */
 
     modifier isAvailable(uint _amount) {
-        if (_amount > balance[msg.sender]) throw;
+        require(_amount <= balance[msg.sender]);
         _;
     }
 
     modifier isAllowed(address _from, uint _amount) {
-        if (_amount > allowance[_from][msg.sender] ||
-           _amount > balance[_from]) throw;
+        require(_amount <= allowance[_from][msg.sender] &&
+           _amount <= balance[_from]);
         _;        
     }
 

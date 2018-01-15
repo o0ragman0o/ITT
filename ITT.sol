@@ -97,7 +97,7 @@ contract ITTInterface
 /* Functions Public constant */
 
     /// @notice Returns best bid or ask price. 
-    function spread(bool _side) public constant returns(uint);
+    function spread(bool _side) public view returns(uint);
     
     /// @notice Returns the order amount for trader `_trader` at '_price'
     /// @param _trader Address of trader
@@ -107,12 +107,12 @@ contract ITTInterface
 
     /// @notice Returns the collective order volume at a `_price`.
     /// @param _price FIFO for price.
-    function getPriceVolume(uint _price) public constant returns (uint);
+    function getPriceVolume(uint _price) public view returns (uint);
 
     /// @notice Returns an array of all prices and their volumes.
     /// @dev [even] indecies are the price. [odd] are the volume. [0] is the
     /// index of the spread.
-    function getBook() public constant returns (uint[]);
+    function getBook() public view returns (uint[]);
 
 /* Functions Public non-constant*/
 
@@ -158,34 +158,34 @@ contract ITT is ERC20Token, ITTInterface
 
     /// @dev Passes if token is currently trading
     modifier isTrading() {
-        if (!trading) throw;
+        require(trading);
         _;
     }
 
     /// @dev Validate buy parameters
     modifier isValidBuy(uint _bidPrice, uint _amount) {
-        if ((etherBalance[msg.sender] + msg.value) < (_amount * _bidPrice) ||
+        require(!((etherBalance[msg.sender] + msg.value) < (_amount * _bidPrice) ||
             _amount == 0 || _amount > totalSupply ||
-            _bidPrice <= MINPRICE || _bidPrice >= MAXNUM) throw; // has insufficient ether.
+            _bidPrice <= MINPRICE || _bidPrice >= MAXNUM)); // has insufficient ether.
         _;
     }
 
     /// @dev Validates sell parameters. Price must be larger than 1.
     modifier isValidSell(uint _askPrice, uint _amount) {
-        if (_amount > balance[msg.sender] || _amount == 0 ||
-            _askPrice < MINPRICE || _askPrice > MAXNUM) throw;
+        require(!(_amount > balance[msg.sender] || _amount == 0 ||
+            _askPrice < MINPRICE || _askPrice > MAXNUM));
         _;
     }
     
     /// @dev Validates ether balance
     modifier hasEther(address _member, uint _ether) {
-        if (etherBalance[_member] < _ether) throw;
+        require(etherBalance[_member] >= _ether);
         _;
     }
 
     /// @dev Validates token balance
     modifier hasBalance(address _member, uint _amount) {
-        if (balance[_member] < _amount) throw;
+        require(balance[_member] >= _amount);
         _;
     }
 
@@ -215,25 +215,25 @@ contract ITT is ERC20Token, ITTInterface
 
 /* Functions Getters */
 
-    function etherBalanceOf(address _addr) public constant returns (uint) {
+    function etherBalanceOf(address _addr) public view returns (uint) {
         return etherBalance[_addr];
     }
 
-    function spread(bool _side) public constant returns(uint) {
+    function spread(bool _side) public view returns(uint) {
         return priceBook.step(HEAD, _side);
     }
 
     function getAmount(uint _price, address _trader) 
-        public constant returns(uint) {
+        public view returns(uint) {
         return amounts[sha3(_price, _trader)];
     }
 
-    function sizeOf(uint l) constant returns (uint s) {
+    function sizeOf(uint l) view returns (uint s) {
         if(l == 0) return priceBook.sizeOf();
         return orderFIFOs[l].sizeOf();
     }
     
-    function getPriceVolume(uint _price) public constant returns (uint v_)
+    function getPriceVolume(uint _price) public view returns (uint v_)
     {
         uint n = orderFIFOs[_price].step(HEAD,NEXT);
         while (n != HEAD) { 
@@ -243,7 +243,7 @@ contract ITT is ERC20Token, ITTInterface
         return;
     }
 
-    function getBook() public constant returns (uint[])
+    function getBook() public view returns (uint[])
     {
         uint i; 
         uint p = priceBook.step(MINNUM, NEXT);
@@ -256,7 +256,7 @@ contract ITT is ERC20Token, ITTInterface
         return volumes; 
     }
     
-    function numOrdersOf(address _addr) public constant returns (uint)
+    function numOrdersOf(address _addr) public view returns (uint)
     {
         uint c;
         uint p = MINNUM;
@@ -267,7 +267,7 @@ contract ITT is ERC20Token, ITTInterface
         return c;
     }
     
-    function getOpenOrdersOf(address _addr) public constant returns (uint[])
+    function getOpenOrdersOf(address _addr) public view returns (uint[])
     {
         uint i;
         uint c;
@@ -284,7 +284,7 @@ contract ITT is ERC20Token, ITTInterface
         return open;
     }
 
-    function getNode(uint _list, uint _node) public constant returns(uint[2])
+    function getNode(uint _list, uint _node) public view returns(uint[2])
     {
         return [orderFIFOs[_list].cll[_node][PREV], 
             orderFIFOs[_list].cll[_node][NEXT]];
