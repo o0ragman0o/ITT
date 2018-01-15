@@ -114,7 +114,7 @@ contract ERC20Token is Base, Math, ERC20Interface
         uint _supply,
         uint8 _decimalPlaces,
         string _symbol,
-        string _name)
+        string _name) public
     {
         totalSupply = _supply;
         decimalPlaces = _decimalPlaces;
@@ -166,7 +166,7 @@ contract ERC20Token is Base, Math, ERC20Interface
         canEnter
         returns (bool success)
     {
-        if (balance[msg.sender] == 0) throw;
+        require(balance[msg.sender] != 0);
         allowance[msg.sender][_spender] = _value;
         Approval(msg.sender, _spender, _value);
         return true;

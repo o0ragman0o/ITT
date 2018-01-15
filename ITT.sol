@@ -121,7 +121,7 @@ contract ITTInterface
     /// @param _amount The requested amount of tokens to buy.
     /// @param _make Value of true will make order if not filled.
     function buy (uint _bidPrice, uint _amount, bool _make)
-        payable returns (bool);
+        external payable returns (bool);
 
     /// @notice Will sell `_amount` tokens at or above `_price` each.
     /// @param _askPrice Lowest price to ask.
@@ -202,7 +202,7 @@ contract ITT is ERC20Token, ITTInterface
                 _decimalPlaces,
                 _symbol,
                 _name
-                )
+                ) public
     {
         // setup pricebook and maximum spread.
         priceBook.cll[HEAD][PREV] = MINPRICE;
