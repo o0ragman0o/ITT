@@ -21,7 +21,7 @@ See MIT Licence for further details.
 <https://opensource.org/licenses/MIT>.
 */
 
-pragma solidity ^0.4.0;
+pragma solidity ^0.4.19;
 
 // LibCLL using `uint` keys
 library LibCLLu {

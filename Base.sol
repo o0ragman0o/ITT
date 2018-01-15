@@ -15,7 +15,7 @@ See MIT Licence for further details.
 <https://opensource.org/licenses/MIT>.
 */
 
-pragma solidity ^0.4.0;
+pragma solidity ^0.4.19;
 
 contract Base
 {
@@ -49,7 +49,7 @@ contract Base
     //   Protected functions return values must be through return parameters.
     modifier preventReentry() {
         require(!mutex);
-        else mutex = true;
+        mutex = true;
         _;
         delete mutex;
         return;
