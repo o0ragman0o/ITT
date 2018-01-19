@@ -14,7 +14,7 @@ See MIT Licence for further details.
 <https://opensource.org/licenses/MIT>.
 */
 
-pragma solidity ^0.4.19;
+pragma solidity ^0.4.18;
 
 import "./Math.sol";
 import "./Base.sol";
