@@ -1,8 +1,9 @@
 /*
 file:   LibCLL.sol
-ver:    0.3.3
-updated:8-Dec-2016
-author: Darryl Morris
+ver:    0.3.4
+updated:20-Apr-2018
+author: Darryl Morris 
+contributors: terraflops
 email:  o0ragman0o AT gmail.com
 
 A Solidity library for implementing a data indexing regime using
@@ -26,7 +27,7 @@ pragma solidity ^0.4.18;
 // LibCLL using `uint` keys
 library LibCLLu {
 
-    string constant public VERSION = "LibCLLu 0.3.3";
+    string constant public VERSION = "LibCLLu 0.3.4";
     uint constant NULL = 0;
     uint constant HEAD = NULL;
     bool constant PREV = false;
@@ -115,7 +116,7 @@ library LibCLLu {
 // LibCLL using `int` keys
 library LibCLLi {
 
-    string constant public VERSION = "LibCLLi 0.3.3";
+    string constant public VERSION = "LibCLLi 0.3.4";
     int constant NULL = 0;
     int constant HEAD = NULL;
     bool constant PREV = false;

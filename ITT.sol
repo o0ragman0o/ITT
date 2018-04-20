@@ -1,8 +1,9 @@
 /*
 file:   ITT.sol
-ver:    0.3.8
-updated:8-Dec-2016
-author: Darryl Morris (o0ragman0o)
+ver:    0.3.9
+updated:20-Apr-2018
+author: Darryl Morris 
+contributors: terraflops
 email:  o0ragman0o AT gmail.com
 
 An ERC20 compliant token with currency
@@ -30,7 +31,7 @@ contract ITTInterface
 
 /* Constants */
 
-    string constant public VERSION = "ITT 0.3.8";
+    string constant public VERSION = "ITT 0.3.9";
     uint constant HEAD = 0;
     uint constant MINNUM = uint(1);
     // use only 128 bits of uint to prevent mul overflows.

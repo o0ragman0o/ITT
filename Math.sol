@@ -1,8 +1,9 @@
 /*
 file:   Math.sol
-ver:    0.2.1
-updated:8-Dec-2016
-author: Darryl Morris
+ver:    0.2.3
+updated:20-Apr-2018
+author: Darryl Morris 
+contributors: terraflops
 email:  o0ragman0o AT gmail.com
 
 An inheritable contract containing math functions and comparitors.
@@ -21,7 +22,7 @@ contract Math
 
 /* Constants */
 
-    string constant public VERSION = "Math 0.2.1";
+    string constant public VERSION = "Math 0.2.3";
     uint constant NULL = 0;
     bool constant LT = false;
     bool constant GT = true;

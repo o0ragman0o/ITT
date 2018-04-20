@@ -1,6 +1,6 @@
 # ITT - Intrinsically Tradable Token
-ver:    0.3.8
-updated: 8-Dec-2016
+ver:    0.3.9
+updated: 20-Apr-2016
 License: MIT
 
 ```

@@ -1,8 +1,9 @@
 /*
 file:   ERC20.sol
-ver:    0.2.5
-updated:8-Dec-2016
-author: Darryl Morris
+ver:    0.2.6
+updated:20-Apr-2018
+author: Darryl Morris 
+contributors: terraflops
 email:  o0ragman0o AT gmail.com
 
 An ERC20 compliant token with reentry protection and safe math.
@@ -25,7 +26,7 @@ contract ERC20Interface
 /* Structs */
 
 /* Constants */
-    string constant public VERSION = "ERC20 0.2.5-o0ragman0o";
+    string constant public VERSION = "ERC20 0.2.6-o0ragman0o";
 
 /* State Valiables */
     uint public totalSupply;

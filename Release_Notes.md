@@ -1,3 +1,5 @@
+0.3.9 Updates to Solidity 0.4.18
+
 0.3.8 Relicensed to MIT
 
 0.3.7 Bug fix

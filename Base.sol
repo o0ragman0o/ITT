@@ -1,8 +1,9 @@
 /*
 file:   Base.sol
-ver:    0.2.3
-updated:8-Dec-2016
-author: Darryl Morris (o0ragman0o)
+ver:    0.2.4
+updated:20-Apr-2018
+author: Darryl Morris 
+contributors: terraflops
 email:  o0ragman0o AT gmail.com
 
 An basic contract furnishing inheriting contracts with ownership, reentry
@@ -21,7 +22,7 @@ contract Base
 {
 /* Constants */
 
-    string constant public VERSION = "Base 0.2.3";
+    string constant public VERSION = "Base 0.2.4";
 
 /* State Variables */
 
