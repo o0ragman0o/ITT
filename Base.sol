@@ -15,7 +15,7 @@ See MIT Licence for further details.
 <https://opensource.org/licenses/MIT>.
 */
 
-pragma solidity ^0.4.0;
+pragma solidity ^0.4.18;
 
 contract Base
 {
@@ -37,7 +37,7 @@ contract Base
 
     // To throw call not made by owner
     modifier onlyOwner() {
-        if (msg.sender != owner) throw;
+        require(msg.sender == owner);
         _;
     }
 
@@ -48,8 +48,8 @@ contract Base
     //   Protected functions cannot use the `return` keyword
     //   Protected functions return values must be through return parameters.
     modifier preventReentry() {
-        if (mutex) throw;
-        else mutex = true;
+        require(!mutex);
+        mutex = true;
         _;
         delete mutex;
         return;
@@ -59,19 +59,19 @@ contract Base
     // to protect against reentry if a `mutextProtect` function is already
     // on the call stack.
     modifier noReentry() {
-        if (mutex) throw;
+        require(!mutex);
         _;
     }
 
     // Same as noReentry() but intended to be overloaded
     modifier canEnter() {
-        if (mutex) throw;
+        require(!mutex);
         _;
     }
     
 /* Functions */
 
-    function Base() { owner = msg.sender; }
+    function Base() public { owner = msg.sender; }
 
     function contractBalance() public constant returns(uint) {
         return this.balance;
@@ -91,7 +91,7 @@ contract Base
         preventReentry()
         returns (bool success_)
     {
-        if(!_recipient.call.value(_ether)()) throw;
+        require(_recipient.call.value(_ether)());
         success_ = true;
     }
 }
